@@ -1,0 +1,865 @@
+#!/usr/bin/env perl
+# DZ: The above command must be /usr/bin/env perl because I need my selected
+# Perl from Perlbrew where I can ensure that e.g. YAML is installed.
+
+# Given stdin, a command and the number of jobs, splits stdin into sections
+# and submits each section independently, possibly joining the outputs again.
+# Ondrej Bojar, with code snippets by Petr Pajas and Jan Stepanek
+
+use strict;
+$| = 1;
+use utf8;
+use open ':utf8';
+binmode(STDIN, ':utf8');
+binmode(STDOUT, ':utf8');
+binmode(STDERR, ':utf8');
+
+use File::Temp qw/tempdir tempfile/;
+use Getopt::Long qw/GetOptionsFromArray/;
+use IPC::Open3;
+use IPC::Open2;
+use Text::ParseWords;
+use File::Path;
+use File::Basename;
+use FindBin;
+use YAML;
+
+my $qruncmd = $FindBin::Bin."/".$FindBin::Script;
+
+
+my $env = "ufal"; # SGE environment (used for option mapping)
+my $hostname = `hostname`;
+if ($hostname =~ /^cluster-cn-/i) {
+  $env = "rwth"; # use SGE as known at RWTH Aachen University
+} elsif ($hostname =~ /cerit-sc/i) {
+  $env = "metacentrum"; # use PBS as known at Metacentrum
+}
+
+my $default_jobs = 5;
+my %opts = (
+  attempts => 1,
+  verbose => 0,
+  debug => 0,
+  sync => 0,
+  "submit-sleep-every" => 500, # after every 500 jobs submitted
+  "submit-sleep" => 0, # sleep this many seconds
+  mem=> "6g",
+  cores=>undef, # number of CPU cores to allocate for each job
+  disk=> undef,
+  "time"=> undef,
+  limits=> [],
+  hold=> [],
+  queue=> undef,
+  "guess-queue"=> undef,
+  "exclude-comp"=> undef,
+  priority => -100, # qrunblocks uses a lower priority by default
+  jobs => $default_jobs,
+  splits => undef,
+  "split-to-size" => undef,
+  logdir => undef,
+  jobname => "qruncmd",
+  "promise-linecount" => undef, # trust caller about the lines to process
+  "input-file" => undef, # optional; to make sure we don't wait for stdin
+  help => 0,
+  join => 1,
+  "merge-sorted" => 0, # assume that each of the bits is already sorted with unix sort, when joining run "sort --merge"
+  tmp => "/mnt/h/tmp", # used to store stdin/combined file
+                       # inputs for slaves always go to ./
+  picksection => undef, # used by slaves to pick section start:length
+  "continue" => 0, # continue failed bits
+  "promise-line-for-line" => 0, # assume partial outputs can be reused
+  "avoid-spawn-for-single-job" => 0,
+    # if chunksize is large to cover everything, run the single job directly
+);
+
+my @ORIGARGV = @ARGV;
+  # stored to save in infofile if restart were needed
+my @optionspec = (
+  "picksection=s",
+  "promise-linecount=i",
+  "input-file=s",
+  "tmp=s",
+  "attempts=i",
+  "debug",
+  "verbose",
+  "jobs|j=i",
+  "splits=i",
+  "split-to-size=i",
+  "jobname|N=s",
+  "logdir=s",
+  "help|h",
+  "sync|s!",
+  "submit-sleep-every=i",
+  "submit-sleep=i",
+  "priority|p=i",
+  "mem|m:s", # set to e.g. 4gi (default 6g). Blank value means no limit but
+     # risk of killing the machine.
+  "cores=i",
+  "sge-flags=s",
+  "queue=s",
+  "guess-queue=s",
+  "exclude-comp=s",
+  "disk=s", # format: 10g
+  "time=s", # format: hh:mm:ss
+  "limit|l=s@", # format, e.g.: h_stack=30M
+  "hold=s@", # format: 123456
+  "join!",
+  "merge-sorted!",
+  "continue",
+  "promise-line-for-line",
+  "avoid-spawn-for-single-job",
+);
+foreach my $default_opt_file ("$ENV{HOME}/.qruncmdrc", "./.qruncmdrc") {
+  if (-e $default_opt_file) {
+    print STDERR "Loading options from $default_opt_file\n";
+    my $h = my_open($default_opt_file);
+    my $defaultoptstr = "";
+    while (<$h>) {
+      next if /^\s*#/; # skip comments
+      $defaultoptstr .= $_;
+    }
+    close $h;
+    my @fake_argv = shellwords($defaultoptstr);
+    GetOptionsFromArray(\@fake_argv, \%opts, @optionspec)
+      or die "Bad options in $default_opt_file";
+  }
+}
+GetOptions(\%opts, @optionspec) or exit 1;
+
+if (defined $opts{picksection}) {
+  # special mode, used by slaves
+  my ($start, $uselines) = split /:/, $opts{picksection};
+  my $nr = 0;
+  my $inf = shift;
+  my $inh = my_open($inf);
+  while (<$inh>) {
+    $nr++;
+    last if $nr >= $start+$uselines;
+    print if $nr >= $start;
+  }
+  close $inh;
+  exit 0;
+}
+
+my $badusage = 0;
+my $incmd = shift;
+
+$badusage = 1 if !defined $incmd;
+
+if ($opts{usage} || $badusage) {
+  print STDERR "$0 cmd infile
+Runs the cmd on N sections of input file or stdin in parallel (Sun Grid Engine).
+Options:
+  --jobname=STR ... set the job name and log filename prefix
+  --logdir=STR  ... where the logs should go (default: current dir)
+  --attempts=1  ... each job restarts up to attempts times
+  --jobs=N  ... default is $default_jobs
+  --splits=M  ... use M>N to avoid flooding cluster: at most N 1/M-sized jobs
+                  will run in parallel
+  --split-to-size=L  ... like --splits but specifying avg. number of lines per
+                         split wished
+  --sync ... wait for all jobs to finish
+  --join ... join stdouts (implies --sync, stdouts not included in the logs)
+             (job outputs, until joined, are gzipped)
+  --avoid-spawn-for-single-job ... don't submit just 1 job
+  --promise-linecount=N  ... don't count lines of input, trust this argument
+Continue failed runs: $0 --continue tempdir
+  --continue ... continue failed jobs from the  given directory
+                 Probably incompatible with --splits so far.
+  --promise-line-for-line ... reuse existing partial outputs assuming the
+                              command preserves the number of lines.
+Options passed to SGE:
+  --priority=-200   ... scheduling priority
+  --mem=6g          ... site-dependent settings of expected memory usage
+                        some sites can't check memory well
+  --sge-flags=' ... ' ... pass this string of flags directly
+No longer supported:
+  --fan  ... shuffle input lines by giving consecutive lines to different jobs
+";
+  exit $badusage;
+}
+
+die "Cannot use both --splits and --split-to-size"
+  if defined $opts{splits} && defined $opts{"split-to-size"};
+
+my $pwd = `pwd`; chomp $pwd;
+
+
+# prepare queue flags, passed to every job and the waiting job
+my @queue_flags = ();
+die "Only one of --queue, --guess-queue and --exclude-comp can be defined"
+  if 1 < (defined $opts{queue} + defined $opts{"guess-queue"}
+        + defined  $opts{"exclude-comp"});
+if (defined $opts{"guess-queue"}) {
+  my $queue = `$opts{"guess-queue"}`; chomp $queue;
+  print STDERR "Guessed queue: $queue\n";
+  push @queue_flags, (-q => $queue) if $queue ne "";
+}
+if (defined $opts{"exclude-comp"}) {
+  push @queue_flags, ("-q", "*@*&!".$opts{"exclude-comp"});
+}
+push @queue_flags, (-q => $opts{queue}) if $opts{queue};
+
+my $starttime = time();
+
+# vars describing the input file
+my $totlines = 0;
+my $infile = undef;
+my $tempfile_to_delete = undef;
+
+
+my @launched_jobids = ();
+my $tempoutdir = undef;
+
+if (defined $opts{logdir}) {
+  if (! -d $opts{logdir}) {
+    mkpath($opts{logdir}) or die "Failed to create logdir '$opts{logdir}'.";
+  }
+  -w $opts{logdir} or die "Logdir '$opts{logdir}' not writeable.";
+}
+
+if ($opts{"continue"}) {
+  my $assume_line_for_line = $opts{"promise-line-for-line"};
+  # the input argument must be a the tempdir
+  $tempoutdir = $incmd;
+  die "Not a directory: $tempoutdir" if ! -d $tempoutdir;
+  print STDERR "Trying to continue jobs from: $tempoutdir\n";
+  my $infostring = load($tempoutdir."/info")."\n";
+  my $info = YAML::Load($infostring);
+  $incmd = $info->{"incommand"};
+  $infile = $info->{"infile"};
+  die "Lost input file: $infile"
+    if ! -e $infile;
+  my $origargv = $info->{"argv"};
+  # interpret old cmdline arguments
+  GetOptionsFromArray($origargv, \%opts, @optionspec)
+    or die "Failed to interpret old ARGV: @$origargv";
+  # check individual jobs
+  $opts{"splits"} = $info->{"splits"};
+  my @starts = @{$info->{"starts"}};
+  my @lengths = @{$info->{"lengths"}};
+  foreach my $i (1..$opts{splits}) {
+    # check if the job failed or not
+    if (-e "$tempoutdir/out.$i.ok") {
+      print STDERR "Job $i finished. Skipping.\n";
+      next;
+    }
+    # remove the last (assuming unfinished) line from the output
+    my $linesok = 0;
+    my $appendoutput = 0;
+    if ($assume_line_for_line) {
+      my $ihdl = my_open("$tempoutdir/out.$i.gz");
+      my $ohdl = my_save("$tempoutdir/out-so-far.$i.gz");
+      my $lastline = undef;
+      while (<$ihdl>) {
+        if (defined $lastline) {
+          print $ohdl $lastline;
+          $linesok ++;
+        }
+        $lastline = $_;
+      }
+      close $ihdl;
+      close $ohdl;
+      if ($linesok > 0) {
+        safesystem("mv $tempoutdir/out-so-far.$i.gz $tempoutdir/out.$i.gz")
+          or die "Failed to move tempoutputfile $tempoutdir/out-so-far.$i.gz";
+        $appendoutput = 1;
+      }
+    } else {
+      # at least backup the partial output in case the user was so stupid
+      # to forget --promise-line-for-line but he realizes this later...
+      safesystem("mv $tempoutdir/out.$i.gz $tempoutdir/out.$i.bkup.gz");
+    }
+    my $mayhold = undef;
+    my $start = $starts[$i-1] + $linesok;
+    my $len = $lengths[$i-1] - $linesok;
+    my $jobid = start_job($i, $start, $len, $mayhold, $appendoutput);
+    print STDERR "Launched job $i ($jobid) for $len lines starting at $start";
+    print STDERR ", will wait for $mayhold" if defined $mayhold;
+    print STDERR "\n";
+    $launched_jobids[$i] = $jobid;
+    #$waitfor[$waitslot] = $jobid;
+  }
+} else {
+  # regular startup of jobs
+
+  # get/construct a file with all inputs
+  if (0 == scalar @ARGV && !defined $opts{"input-file"}) {
+    # copy stdin to a temp file, serve it
+    $opts{sync} = 1; # wait to delete tempfile when all jobs are done
+    my $temp_tmph;
+    ($temp_tmph, $infile) = tempfile(
+      '.qruncmd-temp-XXXXXXXX',
+      SUFFIX => ".gz",
+      DIR => $pwd,
+    );
+    my $tmph = my_save($infile);
+    binmode($tmph, ":utf8");
+    $tempfile_to_delete = $infile;
+    print STDERR "Storing stdin to $infile\n";
+    # read input, copy to file
+    while (<>) {
+      $totlines++;
+      print $tmph $_;
+    }
+    print STDERR "Stored $totlines lines\n";
+    close $tmph;
+    close $temp_tmph;
+  } else {
+    # serve directly arg1 but get number of lines first
+    $infile = shift;
+    die "Conflicting input files specified: ".$opts{"input-file"}." vs. $infile"
+      if defined $opts{"input-file"} && defined $infile
+        && $opts{"input-file"} ne $infile;
+    $infile = $opts{"input-file"} if ! defined $infile;
+    if (defined $opts{"promise-linecount"}) {
+      $totlines = $opts{"promise-linecount"};
+    } else {
+      print STDERR "Counting lines of $infile.\n";
+      my $hdl = my_open($infile);
+      $totlines++ while <$hdl>;
+      close $hdl;
+    }
+    print STDERR "Will process $totlines lines of $infile.\n";
+  }
+  
+  if (0 == $totlines) {
+    print STDERR "No lines to process.\n";
+    exit 0;
+  }
+  
+  if (!defined $opts{splits}) {
+    if (defined $opts{"split-to-size"}) {
+      if ($totlines <= $opts{"split-to-size"}) {
+        $opts{splits} = 1;
+      } else {
+        $opts{splits} = int($totlines / $opts{"split-to-size"});
+      }
+    } else {
+      $opts{splits} = $opts{jobs};
+    }
+  }
+  
+  
+  # print STDERR "Will run cmd on ".(scalar @lines)
+  #   ." lines in $opts{jobs} jobs\n";
+  
+  
+  $opts{splits} = $totlines if $totlines < $opts{splits};
+  $opts{jobs} = $opts{splits} if $opts{splits} < $opts{jobs};
+  
+  my @starts;
+  my @lengths;
+  if (0 == $opts{splits}) {
+    # with 0 jobs, there is just one stream of input lines
+    $starts[0] = 1;
+    $lengths[0] = $totlines;
+    $opts{splits} = 1;  # well, so that we actually run the job
+  } else {
+  #   # split the lines
+  #   if ($opts{fan}) {
+  #     # split the lines as cards are given to people
+  #     my $i=0;
+  #     while (0 < scalar @lines) {
+  #       my $line = shift @lines;
+  #       push @{$splitlists[$i % $opts{splits}]}, $line;
+  #       $i++;
+  #     }
+  #   } else {
+      # split the lines into N contiguous blocks
+      my $minlength = int($totlines / $opts{splits});
+      my $extralines = $totlines - $opts{splits}*int($totlines / $opts{splits});
+      my $pos = 1;
+      foreach my $i (1..$opts{splits}) {
+        my $n = $minlength+($extralines>0?1:0);
+        $starts[$i-1] = $pos;
+        $lengths[$i-1] = $n;
+        $extralines-- if $extralines>0;
+        $pos += $n;
+  #     }
+    }
+  }
+  
+  if ($opts{join}) {
+    # create a temp directory for all the outputs
+    $tempoutdir = tempdir(
+      '.qruncmd-temp-XXXXXXXX',
+      DIR => $pwd,
+    );
+    # store the command there
+    save($tempoutdir."/info",
+      YAML::Dump( {
+        "incommand" => $incmd,
+        "infile" => $infile,
+        "splits" => $opts{"splits"},
+        "starts" => \@starts,
+        "lengths" => \@lengths,
+        "argv" => \@ORIGARGV,
+      }));
+    print STDERR "TEMPDIR: $tempoutdir\n";
+  }
+  
+  my @waitfor = (); # the queue to avoid more than --jobs jobs
+  foreach my $i (1..$opts{splits}) {
+    my $waitslot = 0<$opts{jobs} ? $i % $opts{jobs} : $i;
+    my $mayhold = $waitfor[$waitslot];
+  
+    my $jobid = start_job($i, $starts[$i-1], $lengths[$i-1], $mayhold);
+    print STDERR "Launched job $i ($jobid) for $lengths[$i-1] lines starting at $starts[$i-1]";
+    print STDERR ", will wait for $mayhold" if defined $mayhold;
+    print STDERR "\n";
+    if (defined $jobid) {
+      push @launched_jobids, $jobid;
+      $waitfor[$waitslot] = $jobid;
+    }
+    if (0 == $i % $opts{"submit-sleep-every"}) {
+      my $sleep = $opts{"submit-sleep"};
+      print STDERR "Sleeping for $sleep seconds.\n";
+      sleep($sleep);
+    }
+  }
+}
+
+if ($opts{sync} || $opts{join}) {
+  # should wait for outputs
+  # (--jobs=0 implies that the outputs are already in place)
+  my @waitfor_jobids = grep { defined $_ } @launched_jobids;
+  if (0 < scalar @waitfor_jobids) {
+    print STDERR "Waiting for jobs to finish: @waitfor_jobids\n";
+  
+    my @opts;
+    if (defined $opts{jobname}) {
+      #$opts{jobname} =~ s/\//_/g;
+      push @opts, ('-N', "W".$opts{jobname});
+    }
+    push @opts, qw(-sync yes);
+    push @opts, map { -hold_jid => $_ } (@waitfor_jobids, @{$opts{"hold"}});
+    # include also queue flags
+    push @opts, @queue_flags;
+    
+    # qsub execution
+    my $tmphold = new File::Temp(
+      DIR => $pwd,
+      UNLINK => 1,
+      TEMPLATE=>'.qruncmd-XXXXXXXX',
+      SUFFIX => '.hold.bash' );
+    print $tmphold <<"KONEC"
+#!/bin/bash
+echo "Just a wait job for @waitfor_jobids"
+KONEC
+;
+    close $tmphold;
+    my($out, $err, $exitcode)
+      = saferun3((qw(qsub -j y -o /dev/null -e /dev/null -cwd -S /bin/bash),
+          "-p", $opts{priority}, @opts,
+          $tmphold, qw(>/dev/null 2>/dev/null)));
+    die "Failed to submit the waiting job!" if $exitcode;
+  } else {
+    print STDERR "No jobs to wait for.\n";
+  }
+} else {
+  print STDERR "Jobs are now running. Check progress yourself.\n";
+}
+
+my $err = 0;
+if ($opts{join}) {
+  if ($opts{"merge-sorted"}) {
+    print STDERR "Joining the outputs (unix sort --merge)...\n";
+    my @goodfiles = ();
+    foreach my $i (1..$opts{splits}) {
+      if (-e "$tempoutdir/out.$i.ok") {
+        # fine, copy the file
+        push @goodfiles, "<(zcat $tempoutdir/out.$i.gz)";
+      } else {
+        print STDERR "Job $i (".$launched_jobids[$i-1]
+          .") failed, skipping its output, examine its log: $opts{logdir}/*.o"
+  	.$launched_jobids[$i-1]
+  	."\n";
+        $err++;
+      }
+    }
+    open SORTED, "bash -c 'sort --merge @goodfiles' |" or die "Failed to read from sort --merge";
+    print while (<SORTED>);
+    close SORTED;
+  } else {
+    print STDERR "Joining the outputs (simple concatenation)...\n";
+    foreach my $i (1..$opts{splits}) {
+      if (-e "$tempoutdir/out.$i.ok") {
+        # fine, copy the file
+        my $hdl = my_open("$tempoutdir/out.$i.gz");
+        print while (<$hdl>);
+        close $hdl;
+      } else {
+        print STDERR "Job $i (".$launched_jobids[$i-1]
+          .") failed, skipping its output, examine its log: $opts{logdir}/*.o"
+  	.$launched_jobids[$i-1]
+  	."\n";
+        $err++;
+      }
+    }
+  }
+  if ($err) {
+    print STDERR "$err jobs failed. Their output has been ignored.\n";
+  } else {
+    print STDERR "Done.\n";
+  }
+  if ($err || $opts{'debug'}) {
+    print STDERR "Leaving outputs directory intact, delete yourself:\n   $tempoutdir\n";
+    print STDERR "Leaving temp input file intact, delete yourself:\n   $tempfile_to_delete\n"
+      if defined $tempfile_to_delete;
+  } else {
+    # remove temporary directory
+    rmtree($tempoutdir);
+    unlink($tempfile_to_delete) if defined $tempfile_to_delete;
+  }
+}
+
+my $stoptime = time();
+my $diff = $stoptime-$starttime;
+printf STDERR "Took: %.0fs (%s)\n", $diff, humantimediff($diff);
+
+exit 1 if $err;
+
+
+sub start_job {
+  my $jobnum = shift;
+  my $startat = shift;
+  my $linecount = shift;
+  my $mayhold = shift;
+  my $append = shift;
+
+  my $tmpscript = new File::Temp(
+    DIR => $pwd,
+    UNLINK => 0, # the script will delete itself after it has been completed
+    TEMPLATE=>'.qruncmd-XXXXXXXX',
+    SUFFIX => '.bash' );
+
+  my $cmd = "( $incmd )"; # wrap into a subshell
+  my $stdinsourcecmd = "$qruncmd --picksection $startat:$linecount $infile";
+  $cmd = "$stdinsourcecmd \\\n| $cmd";
+
+  my $mayechotempoutdir = "";
+  my $maytouchokfile = "";
+  if (defined $tempoutdir) {
+    my $redirect = $append ? ">>" : ">";
+    $cmd .= "\\\n| gzip -c $redirect $tempoutdir/out.$jobnum.gz";
+    $mayechotempoutdir = "echo '== TempOutFile:   $tempoutdir/out.$jobnum' >&2";
+    $maytouchokfile = "touch $tempoutdir/out.$jobnum.ok";
+  }
+
+  my $cmdbq = $cmd;
+  $cmdbq =~ s/'/'"'"'/g;
+  my $script = << "KONEC"
+#!/bin/bash
+
+set -o pipefail
+  # die if any command in a pipe dies
+
+sdateo=`date '+%Y/%m/%d %H:%M:%S'`
+sdate=`date +%s -d "\$sdateo"`
+
+echo "==============================" >&2
+echo "== Server:        "`hostname` >&2
+echo "== Directory:     "`pwd` >&2
+echo "== Started:       \$sdateo" >&2
+echo "== Sourcing:      \$HOME/\.bashrc" >&2
+echo "== Input:         $infile, from $startat for $linecount lines" >&2
+$mayechotempoutdir
+echo "==============================" >&2
+
+# Sourcing \$HOME/bashrc
+. \$HOME/.bashrc
+
+# Renice ourselves
+renice 10 \$\$ >&2
+
+# Set useful variables
+export QRUNCMD_INPUTFILE="$infile"
+export QRUNCMD_SOURCE="$stdinsourcecmd"
+export QRUNCMD_JOBNUM="$jobnum"
+
+cd $pwd
+
+attempt=1
+error=1
+while [ \$error == 1 ] && [ \$attempt -le $opts{attempts} ]; do
+  echo "==== ATTEMPT \$attempt out of $opts{attempts}" >&2
+  echo "==== Running command:" >&2
+  echo '$cmdbq' >&2
+  echo "====" >&2
+  if $cmd; then
+    error=0
+    $maytouchokfile
+  else
+    echo "==== ATTEMPT \$attempt FAILED" >&2
+    attempt=\$((\$attempt+1))
+  fi
+done
+
+
+fdateo=`date '+%Y/%m/%d %H:%M:%S'`
+fdate=`date +%s -d "\$fdateo"`
+
+((diff=\$fdate-\$sdate))
+mindiff=0
+hourdiff=0
+daydiff=0
+if((diff>59));then
+  ((secdiff=diff%60))
+  ((diff=diff/60))
+  if((diff>59));then
+    ((mindiff=diff%60))
+    ((diff=diff/60))
+    if((diff>23));then
+      ((hourdiff=diff%24))
+      ((daydiff=diff/24))
+    else
+      ((hourdiff=diff))
+    fi
+  else
+    ((mindiff=diff))
+  fi
+else
+  ((secdiff=diff))
+fi
+
+if [ \$error == 1 ] || [ "$opts{debug}" == 1 ]; then
+  echo "Leaving the script and the log for inspection: " >&2
+  echo "  $tmpscript" >&2
+  echo "  $infile" >&2
+  if [ \$error == 1 ]; then
+    status="FAILED"
+  else
+    status="succeeded"
+  fi
+else
+  # remove this temporary script and the temporary filelist
+  echo Removing the script: $tmpscript >&2
+  rm $tmpscript
+  status="succeeded"
+fi
+
+echo "==============================" >&2
+echo "== Server:    "`hostname` >&2
+echo "== Directory: "`pwd` >&2
+echo "== Status:    \$status (at attempt \$attempt of $opts{attempts})" >&2
+echo "== Started:   \$sdateo" >&2
+echo "== Finished:  \$fdateo" >&2
+echo "== Duration:  \$daydiff days \$hourdiff hours \$mindiff mins \$secdiff secs" >&2
+echo "==============================" >&2
+
+KONEC
+;
+
+  print $tmpscript $script;
+  close $tmpscript;
+
+  # debugging: print the script
+  # print $script;
+
+  # foreground execution:
+  # safesystem(("/bin/bash", $tmpscript));
+  # return;
+
+  my @opts;
+  if (defined $opts{jobname}) {
+    $opts{jobname} =~ s/\//_/g;
+    push @opts, ('-N', $opts{jobname});
+    push @opts, ('-o', $opts{logdir}.'/$JOB_NAME.o$JOB_ID') if defined $opts{logdir};
+  }
+  # push @opts, qw(-sync yes) if $opts{sync};
+  # push @opts, map { -hold_jid => $_ } @{$opts{holds}};
+
+  # include queue flags
+  push @opts, @queue_flags;
+
+  push @opts, ('-hold_jid', $mayhold) if defined $mayhold;
+  my $cores = $opts{cores};
+  if (defined $cores) {
+    die "Bad specification of --cores: $cores" if $cores <1;
+    if ($cores > 1) {
+      if ($env eq "rwth") {
+        push @opts, ('-pe', 'smp', $cores); # untested
+      } elsif ($env eq "metacentrum") {
+        # options in PBS format!
+        push @opts, ('-l', 'nodes=1:ppn='.$cores);
+      } else {
+        # UFAL setup
+        push @opts, ('-pe', 'smp', $cores);
+      }
+    }
+  }
+  if (defined $opts{mem} && $opts{mem} ne "") {
+    push @opts, ('-hard', '-l', "mf=".$opts{mem}, '-l', 'h_data='.$opts{mem});
+  }
+  if (defined $opts{"time"}) {
+    push @opts, ('-l', "h_rt=".$opts{"time"});
+  }
+  if (defined $opts{"disk"}) {
+    # UFAL setup
+    push @opts, ('-l', "mnthf=".$opts{"disk"});
+  }
+  # add all other directives --limit
+  push @opts, map {('-l', $_)} @{$opts{"limit"}};
+
+  if (defined $opts{"sge-flags"}) {
+    # pass grid flags directly
+    push @opts, grep { /./ } split / /, @opts{"sge-flags"};
+  }
+  
+  if (0 == $opts{jobs}
+    || 1 == $opts{jobs} && $opts{"avoid-spawn-for-single-job"}) {
+    # just run locally
+    safesystem("/bin/bash $tmpscript") or die "Running the job locally failed";
+    return undef;
+  } else {
+    # qsub execution
+    my ($out, $err, $exitcode) = saferun3((qw(qsub -j y -cwd -S /bin/bash), "-p", $opts{priority}, @opts, $tmpscript));
+    if ($exitcode) {
+      print STDERR $err;
+      exit 1;
+    } else {
+      if ($out =~ /Your job ([0-9]+) .* has been submitted/) {
+        return $1;
+      } else {
+        die "Failed to get job id:\n$out\n$err\n";
+      }
+    }
+  }
+
+}
+
+sub saferun3 {
+ print STDERR "Executing: @_\n" if $opts{'verbose'};
+  my($wtr, $rdr, $err);
+  my $pid = open3($wtr, $rdr, $err, @_);
+  close($wtr);
+  waitpid($pid, 0);
+  my $gotout = "";
+  $gotout .= $_ while (<$rdr>);
+  close $rdr;
+  my $goterr = "";
+  $goterr .= $_ while (<$err>);
+  close $err if defined $err;
+  if ($? == -1) {
+      print STDERR "Failed to execute: @_\n  $!\n";
+      exit(1);
+  }
+  elsif ($? & 127) {
+      printf STDERR "Execution of: @_\n  died with signal %d, %s coredump\n",
+          ($? & 127),  ($? & 128) ? 'with' : 'without';
+      exit(1);
+  }
+  else {
+    my $exitcode = $? >> 8;
+    print STDERR "Exit code: $exitcode\n" if $exitcode;
+    return ( $gotout, $goterr, $exitcode );
+  }
+}
+
+
+sub safesystem {
+  print STDERR "Executing: @_\n" if $opts{'verbose'};
+  system(@_);
+  if ($? == -1) {
+      print STDERR "Failed to execute: @_\n  $!\n";
+      exit(1);
+  }
+  elsif ($? & 127) {
+      printf STDERR "Execution of: @_\n  died with signal %d, %s coredump\n",
+          ($? & 127),  ($? & 128) ? 'with' : 'without';
+      exit(1);
+  }
+  else {
+    my $exitcode = $? >> 8;
+    print STDERR "Exit code: $exitcode\n" if $exitcode;
+    return ! $exitcode;
+  }
+}
+
+sub load {
+  my $f = shift;
+  my $h = my_open($f);
+  my $o = "";
+  $o .= $_ while (<$h>);
+  close $h if $f ne "-";
+  chomp $o;
+  return $o;
+}
+sub save {
+  my $f = shift;
+  my $data = shift;
+  my $h = my_save($f);
+  print $h $data;
+  print $h "\n" if $data ne "" && $data !~ /\n$/m;
+  close $h;
+}
+
+sub my_open {
+  my $f = shift;
+  die "Not found: $f" if ! -e $f;
+
+  my $opn;
+  my $hdl;
+  my $ft = `file $f`;
+  # file might not recognize some files!
+  if ($f =~ /\.gz$/ || $ft =~ /gzip compressed data/) {
+    $opn = "zcat $f |";
+  } elsif ($f =~ /\.xz$/ || $ft =~ /XZ compressed data/) {
+    $opn = "xzcat $f |";
+  } elsif ($f =~ /\.bz2$/ || $ft =~ /bzip2 compressed data/) {
+    $opn = "bzcat $f |";
+  } else {
+    $opn = "$f";
+  }
+  open $hdl, $opn or die "Can't open '$opn': $!";
+  binmode $hdl, ":utf8";
+  return $hdl;
+}
+
+sub my_save {
+  my $f = shift;
+
+  my $opn;
+  my $hdl;
+  # file might not recognize some files!
+  if ($f =~ /\.gz$/) {
+    $opn = "| gzip -c > '$f'";
+  } elsif ($f =~ /\.bz2$/) {
+    $opn = "| bzip2 > '$f'";
+  } else {
+    $opn = ">$f";
+  }
+  mkpath( dirname($f) );
+  open $hdl, $opn or die "Can't write to '$opn': $!";
+  binmode $hdl, ":utf8";
+  return $hdl;
+}
+
+sub humantimediff {
+  my $diff = shift;
+  my $out = "";
+  if ($diff < 0) {
+    $out .= "-";
+    $diff = -$diff;
+  }
+  if ($diff >= 60) {
+    my $min = int($diff/60);
+    $diff -= $min*60;
+    if ($min >= 60) {
+      my $hours = int($min/60);
+      $min -= $hours*60;
+      if ($hours >= 24) {
+        my $days = int($hours/24);
+        $hours -= $days*24;
+        $out .= $days."d";
+      }
+      $out .= $hours."h";
+    }
+    $out .= sprintf("%02im", $min);
+  }
+  $out .= sprintf("%02is", $diff);
+  return $out;
+}
+
+# Copyright 2008-2011 Ondrej Bojar
