@@ -31,6 +31,8 @@ set -o pipefail
 # Where to install/compile to:
 # If the script is run without parameters, it assumes that it was already run
 # before and that now we run it in the directory where it already is.
+
+
 MYDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # get script directory
 DESIREDDIR=$1
 if [ -z "$DESIREDDIR" ]; then
@@ -56,6 +58,13 @@ else
 fi
 warn "### Compiling marian for the CPU+GPU architecture of "$(hostname)" into $TARGETDIR"
 cd "$TARGETDIR" || die "Failed to chdir to $TARGETDIR"
+
+
+# use my MKL on AIC
+if [[ $(hostname) == cpu-node* ]]
+then
+	MKL_STRING=" -DMKL_INCLUDE_DIR=/lnet/aic/personal/jon/mkl/2021.2.0/include/ -DMKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0"
+fi
 
 # in ideal case, nvidia-smi exists and we want to use this version of CUDA
 CUDA_VERSION=$(nvidia-smi | grep -oP "CUDA Version: \K...." )
@@ -167,15 +176,15 @@ if [ ! -e marian/build-$n ]; then
 
   # build marian
   $usecmake/bin/cmake \
-    $cuda_flag \
+    $cuda_flag $MKL_STRING \
     -DBOOST_ROOT=$BOOST/ \
     -DBOOST_INCLUDEDIR=$BOOST/include \
     -DBOOST_LIBRARYDIR=$BOOST/lib \
     -DCMAKE_C_COMPILER=$GCC/bin/gcc \
     -DCMAKE_CXX_COMPILER=$GCC/bin/g++ \
-    -DCMAKE_MODULE_LINKER_FLAGS="-lutil -ldl" \
-    -DCMAKE_EXE_LINKER_FLAGS="-lutil -ldl" \
-    -DCMAKE_SHARED_LINKER_FLAGS="-lutil -ldl" \
+    -DCMAKE_MODULE_LINKER_FLAGS="-lutil -ldl  -lcblas -lblas" \
+    -DCMAKE_EXE_LINKER_FLAGS="-lutil -ldl -lcblas -lblas " \
+    -DCMAKE_SHARED_LINKER_FLAGS="-lutil -ldl -lcblas -lblas " \
     -DCMAKE_C_STANDARD_LIBRARIES="-lpthread" \
     -DCMAKE_REQUIRED_FLAGS="-lpthread" \
 	-DUSE_SENTENCEPIECE=on \
@@ -274,7 +283,7 @@ CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
         CUDNN=7.4
         CUDA_VERSION=9.2
 	else
-	echo "no suitable CUDA found, falling back to CPU-only (can't be used for training)"
+	echo "no suitable CUDA found, falling back to CPU-only (can't be used for training)" >&2
 	CUDA_VERSION=
 	fi
 	export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
