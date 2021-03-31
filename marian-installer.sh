@@ -222,15 +222,6 @@ else
   instr=\${instr:1:100}
     # strip the leading -
 
-if [ ! x$USE_CUDA == xyes ]; then
-  warn "Compiling Marian **without** GPU support."
-  cuda_flag="-DCOMPILE_CUDA=off"
-  fingerprint="CPUONLY-CPU-$instr"
-else
-  warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
-  cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
-  fingerprint="CUDA-$CUDA_VERSION-CPU-$instr"
-
 # First, try to parse nvidia-smi
 
 CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
