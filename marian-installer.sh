@@ -247,7 +247,7 @@ fi
  
 
 CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
-  if [ -e $TARGETDIR/marian/build-CUDA-\$CUDA_VERSION/marian ]
+  if [ -e $TARGETDIR/marian/build-CUDA-\$CUDA_VERSION-CPU-\$instr/marian ]
 	then
 	need="CUDA-\$CUDA_VERSION-CPU-\$instr"
         export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
