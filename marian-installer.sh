@@ -110,14 +110,52 @@ else
   warn "Will use the existing ./marian/"
 fi
 
+#sse2 ssse3 avx avx2 avx512 avx512vnni
+instr="000000"
+if grep -q " sse2 " /proc/cpuinfo
+then
+	instr="1${instr:1:5}"
+fi
+
+if grep -q " ssse3 " /proc/cpuinfo
+then
+        instr="${instr:0:1}1${instr:2:6}"
+fi
+
+if grep -q " avx " /proc/cpuinfo
+then
+        instr="${instr:0:2}1${instr:3:6}"
+
+fi
+
+if grep -q " avx2 " /proc/cpuinfo
+then
+        instr="${instr:0:3}1${instr:4:6}"
+
+fi
+
+if grep -q " avx512 " /proc/cpuinfo
+then
+	instr="${instr:0:4}1${instr:5:6}"
+
+fi
+if grep -q " avx512vnni " /proc/cpuinfo
+then
+        instr="${instr:0:5}1"
+
+fi
+
+
+
+
 if [ ! x$USE_CUDA == xyes ]; then
   warn "Compiling Marian **without** GPU support."
   cuda_flag="-DCOMPILE_CUDA=off"
-  n="CPUONLY"
+  n="CPUONLY-CPU-$instr"
 else
   warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
   cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
-  n="CUDA-$CUDA_VERSION"
+  n="CUDA-$CUDA_VERSION-CPU-$instr"
 
 fi
 
@@ -169,12 +207,49 @@ if [ -e $TARGETDIR/marian/build-\$hn ]; then
   need=\$hn
 else
   # Guessing build from another machine at UFAL based on CUDA version
+
+
+instr="000000"
+if grep -q " sse2 " /proc/cpuinfo
+then
+        instr="1\${instr:1:5}"
+fi
+
+if grep -q " ssse3 " /proc/cpuinfo
+then
+        instr="\${instr:0:1}1\${instr:2:6}"
+fi
+
+if grep -q " avx " /proc/cpuinfo
+then
+        instr="\${instr:0:2}1\${instr:3:6}"
+
+fi
+
+if grep -q " avx2 " /proc/cpuinfo
+then
+        instr="\${instr:0:3}1\${instr:4:6}"
+
+fi
+
+if grep -q " avx512 " /proc/cpuinfo
+then
+        instr="\${instr:0:4}1\${instr:5:6}"
+
+fi
+if grep -q " avx512vnni " /proc/cpuinfo
+then
+        instr="\${instr:0:5}1"
+
+fi
+
 # First, try to parse nvidia-smi
+ 
 
 CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
   if [ -e $TARGETDIR/marian/build-CUDA-\$CUDA_VERSION/marian ]
 	then
-	need="CUDA-\$CUDA_VERSION"
+	need="CUDA-\$CUDA_VERSION-CPU-\$instr"
         export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
 
   else
@@ -206,9 +281,9 @@ CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
 	need="CUDA-$CUDA_VERSION"
 	if [[ ! -z "\$CUDA_VERSION" ]]
 	then
-	        need="CUDA-\$CUDA_VERSION"
+	        need="CUDA-\$CUDA_VERSION-CPU-\$instr"
 	else
-		need=CPUONLY
+		need=CPUONLY-CPU-\$instr
 	fi
   fi
 fi
