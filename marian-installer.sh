@@ -52,7 +52,7 @@ else
     exit 1
   fi
   mkdir -p "$DESIREDDIR" || die "Failed to create $DESIREDDIR"
-  TARGETDIR="$DESIREDDIR"
+  TARGETDIR=$(readlink -f "$DESIREDDIR")
   cp "${BASH_SOURCE[0]}" "$TARGETDIR/compile-again-for-this-architecture.sh" \
   || die "Failed to copy self to $TARGETDIR/compile-again-for-this-architecture.sh"
 fi
