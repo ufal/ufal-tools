@@ -2,6 +2,8 @@
 # Installation of Marian NMT and prerequisites for UFAL cluster environment.
 # Derived from eman seed for marian (http://ufal.mff.cuni.cz/eman)
 # Ondrej Bojar and Josef Jon
+# vim: tabstop=2 expandtab
+
 
 marianrepo=https://github.com/marian-nmt/marian-dev.git
 
@@ -59,29 +61,50 @@ fi
 warn "### Compiling marian for the CPU+GPU architecture of "$(hostname)" into $TARGETDIR"
 cd "$TARGETDIR" || die "Failed to chdir to $TARGETDIR"
 
+### Default settings (good for ufal)
+GCC=/usr/
+# where do all cuda versions live?
+CUDA_HOMES=/opt/cuda
+
+
+### Environment-specific steps and settings
+hostname=$(hostname)
+if [[ "$hostname" =~ metacentrum.cz ]] || [[ "$hostname" =~ grid.cesnet.cz ]]
+then
+  # adan and doom
+  module add cuda-9.0
+  module add gcc-5.3.0
+  GCC=/software/gcc/5.3.0
+  CUDA_HOMES=/software/cuda
+  #module add cmake-3.6.1
+fi
+
 
 # use my MKL on AIC
-if [[ $(hostname) == cpu-node* ]]
-then
-	MKL_STRING=" -DMKL_INCLUDE_DIR=/lnet/aic/personal/jon/mkl/2021.2.0/include/ -DMKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0"
+if [[ "$hostname" == cpu-node* ]]; then
+  MKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0
+  [ -d "$MKL_ROOT" ] || die "MKL missing: $MKL_ROOT"
+  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
 fi
+
+
+### Less environment specific steps
 
 # in ideal case, nvidia-smi exists and we want to use this version of CUDA
 CUDA_VERSION=$(nvidia-smi | grep -oP "CUDA Version: \K...." )
 USE_CUDA=yes
-if [ -e /opt/cuda/$CUDA_VERSION/bin/nvcc ]
+if [ -e $CUDA_HOMES/$CUDA_VERSION/bin/nvcc ]
 then
-  CUDA_HOME="/opt/cuda/$CUDA_VERSION/"
-elif [ -e /opt/cuda/10.1 ]; then
-  CUDA_HOME="/opt/cuda/10.1/"
+  CUDA_HOME="$CUDA_HOMES/$CUDA_VERSION/"
+elif [ -e $CUDA_HOMES/10.1 ]; then
+  # Strange situation when nvidia-smi returns e.g. version 11.2
+  CUDA_HOME="$CUDA_HOMES/10.1/"
   CUDA_VERSION=$("$CUDA_HOME/bin/nvcc" --version | grep -oP "release \K....")
   warn "Compiling with CUDA version $CUDA_VERSION from $CUDA_HOME"
 else 
-	USE_CUDA=no
+  USE_CUDA=no
   warn "Warning: CUDA not located, installing without GPU support!"
 fi
-
-GCC=/usr/
 
 # check if the desired branch exists (test works also with BRANCH == "")
 if ! git ls-remote --heads "$marianrepo" | grep "refs/heads/$BRANCH" -q; then \
