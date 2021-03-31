@@ -106,6 +106,28 @@ else
   warn "Warning: CUDA not located, installing without GPU support!"
 fi
 
+
+## Construct chipset fingerprint
+instr=""
+for kw in sse2 ssse3 avx avx2 avx512 avx512vnni; do
+  if grep -q " $kw " /proc/cpuinfo; then
+    instr="$instr-$kw"
+  fi
+done
+instr=${instr:1:100}
+  # strip the leading -
+
+if [ ! x$USE_CUDA == xyes ]; then
+  warn "Compiling Marian **without** GPU support."
+  cuda_flag="-DCOMPILE_CUDA=off"
+  fingerprint="CPUONLY-CPU-$instr"
+else
+  warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
+  cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
+  fingerprint="CUDA-$CUDA_VERSION-CPU-$instr"
+fi
+warn "Compiling this version: $fingerprint"
+
 # check if the desired branch exists (test works also with BRANCH == "")
 if ! git ls-remote --heads "$marianrepo" | grep "refs/heads/$BRANCH" -q; then \
   echo "The branch '$BRANCH' does not exist at $marianrepo, assuming it is a commit"
@@ -142,60 +164,11 @@ else
   warn "Will use the existing ./marian/"
 fi
 
-#sse2 ssse3 avx avx2 avx512 avx512vnni
-instr="000000"
-if grep -q " sse2 " /proc/cpuinfo
-then
-	instr="1${instr:1:5}"
-fi
 
-if grep -q " ssse3 " /proc/cpuinfo
-then
-        instr="${instr:0:1}1${instr:2:6}"
-fi
-
-if grep -q " avx " /proc/cpuinfo
-then
-        instr="${instr:0:2}1${instr:3:6}"
-
-fi
-
-if grep -q " avx2 " /proc/cpuinfo
-then
-        instr="${instr:0:3}1${instr:4:6}"
-
-fi
-
-if grep -q " avx512 " /proc/cpuinfo
-then
-	instr="${instr:0:4}1${instr:5:6}"
-
-fi
-if grep -q " avx512vnni " /proc/cpuinfo
-then
-        instr="${instr:0:5}1"
-
-fi
-
-
-
-
-if [ ! x$USE_CUDA == xyes ]; then
-  warn "Compiling Marian **without** GPU support."
-  cuda_flag="-DCOMPILE_CUDA=off"
-  n="CPUONLY-CPU-$instr"
-else
-  warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
-  cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
-  n="CUDA-$CUDA_VERSION-CPU-$instr"
-
-fi
-
-#hn=$(hostname)
-if [ ! -e marian/build-$n ]; then
-  warn "RUNNING BUILD in marian/build-$hn"
-  mkdir marian/build-$n
-  cd marian/build-$n
+if [ ! -e marian/build-$fingerprint ]; then
+  warn "RUNNING BUILD in marian/build-$fingerprint"
+  mkdir marian/build-$fingerprint
+  cd marian/build-$fingerprint
 
   # build marian
   $usecmake/bin/cmake \
@@ -238,85 +211,60 @@ if [ -e $TARGETDIR/marian/build-\$hn ]; then
 # exact build for the machine, probably may be useful for some exceptions
   need=\$hn
 else
-  # Guessing build from another machine at UFAL based on CUDA version
+  # Guessing build based on CUDA version and chipset
 
+  instr=""
+  for kw in sse2 ssse3 avx avx2 avx512 avx512vnni; do
+    if grep -q " \$kw " /proc/cpuinfo; then
+      instr="\$instr-\$kw"
+    fi
+  done
+  instr=\${instr:1:100}
+    # strip the leading -
 
-instr="000000"
-if grep -q " sse2 " /proc/cpuinfo
-then
-        instr="1\${instr:1:5}"
-fi
-
-if grep -q " ssse3 " /proc/cpuinfo
-then
-        instr="\${instr:0:1}1\${instr:2:6}"
-fi
-
-if grep -q " avx " /proc/cpuinfo
-then
-        instr="\${instr:0:2}1\${instr:3:6}"
-
-fi
-
-if grep -q " avx2 " /proc/cpuinfo
-then
-        instr="\${instr:0:3}1\${instr:4:6}"
-
-fi
-
-if grep -q " avx512 " /proc/cpuinfo
-then
-        instr="\${instr:0:4}1\${instr:5:6}"
-
-fi
-if grep -q " avx512vnni " /proc/cpuinfo
-then
-        instr="\${instr:0:5}1"
-
-fi
+if [ ! x$USE_CUDA == xyes ]; then
+  warn "Compiling Marian **without** GPU support."
+  cuda_flag="-DCOMPILE_CUDA=off"
+  fingerprint="CPUONLY-CPU-$instr"
+else
+  warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
+  cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
+  fingerprint="CUDA-$CUDA_VERSION-CPU-$instr"
 
 # First, try to parse nvidia-smi
- 
 
 CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
   if [ -e $TARGETDIR/marian/build-CUDA-\$CUDA_VERSION-CPU-\$instr/marian ]
-	then
-	need="CUDA-\$CUDA_VERSION-CPU-\$instr"
-        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
-
+  then
+    need="CUDA-\$CUDA_VERSION-CPU-\$instr"
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
   else
-	if [ -e "/opt/cuda/11.1/bin/nvcc" ]
-	then
-	CUDNN=8.0
-	CUDA_VERSION=11.1
-        elif [ -e "/opt/cuda/11.0/bin/nvcc" ]
-        then
-        CUDNN=8.0
-	CUDA_VERSION=11.0
-        elif [ -e "/opt/cuda/10.2/bin/nvcc" ]
-        then
-        CUDNN=7.6
-	CUDA_VERSION=10.2
-        elif [ -e "/opt/cuda/10.1/bin/nvcc" ]
-        then
-	CUDNN=7.6
-        CUDA_VERSION=10.1
-        elif [ -e "/opt/cuda/9.2/bin/nvcc" ]
-        then
-        CUDNN=7.4
-        CUDA_VERSION=9.2
-	else
-	echo "no suitable CUDA found, falling back to CPU-only (can't be used for training)" >&2
-	CUDA_VERSION=
-	fi
-	export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
-	need="CUDA-$CUDA_VERSION"
-	if [[ ! -z "\$CUDA_VERSION" ]]
-	then
-	        need="CUDA-\$CUDA_VERSION-CPU-\$instr"
-	else
-		need=CPUONLY-CPU-\$instr
-	fi
+    if [ -e "/opt/cuda/11.1/bin/nvcc" ]; then
+      CUDNN=8.0
+      CUDA_VERSION=11.1
+    elif [ -e "/opt/cuda/11.0/bin/nvcc" ]; then
+      CUDNN=8.0
+      CUDA_VERSION=11.0
+    elif [ -e "/opt/cuda/10.2/bin/nvcc" ]; then
+      CUDNN=7.6
+      CUDA_VERSION=10.2
+    elif [ -e "/opt/cuda/10.1/bin/nvcc" ]; then
+      CUDNN=7.6
+      CUDA_VERSION=10.1
+    elif [ -e "/opt/cuda/9.2/bin/nvcc" ]; then
+      CUDNN=7.4
+      CUDA_VERSION=9.2
+    else
+      echo "no suitable CUDA found, falling back to CPU-only (can't be used for training)" >&2
+      CUDA_VERSION=
+    fi
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
+    need="CUDA-$CUDA_VERSION"
+    if [[ ! -z "\$CUDA_VERSION" ]]; then
+      need="CUDA-\$CUDA_VERSION-CPU-\$instr"
+    else
+      need=CPUONLY-CPU-\$instr
+    fi
   fi
 fi
 guessed=\$( ls -d $TARGETDIR/marian/build-* \
