@@ -69,10 +69,10 @@ CUDA_HOMES=/opt/cuda
 
 ### Environment-specific steps and settings
 hostname=$(hostname)
-if [[ "$hostname" =~ metacentrum.cz ]] || [[ "$hostname" =~ grid.cesnet.cz ]]
+if [[ "$hostname" =~ metacentrum.cz ]] || [[ "$hostname" =~ grid.cesnet.cz ]] || [[ "$hostname" =~ cerit-sc.cz ]]
 then
   # adan and doom
-  module add cuda-9.0
+  module add cuda-10.1
   module add gcc-5.3.0
   GCC=/software/gcc/5.3.0
   CUDA_HOMES=/software/cuda
@@ -83,10 +83,15 @@ fi
 # use my MKL on AIC
 if [[ "$hostname" == cpu-node* ]]; then
   MKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0
-  [ -d "$MKL_ROOT" ] || die "MKL missing: $MKL_ROOT"
+#  [ -d "$MKL_ROOT" ] || die "MKL missing: $MKL_ROOT" -- not strictly needed
   MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
 fi
 
+# use MKL on metacentrum
+if [ -d /mnt/storage-brno8/home/cepin/mkl/2021.2.0/ ];then
+  MKL_ROOT=/mnt/storage-brno8/home/cepin/mkl/2021.2.0/ 
+  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+fi
 
 ### Less environment specific steps
 
@@ -102,8 +107,12 @@ elif [ -e $CUDA_HOMES/10.1 ]; then
   CUDA_VERSION=$("$CUDA_HOME/bin/nvcc" --version | grep -oP "release \K....")
   warn "Compiling with CUDA version $CUDA_VERSION from $CUDA_HOME"
 else 
-  USE_CUDA=no
-  warn "Warning: CUDA not located, installing without GPU support!"
+  if [ -z "$CUDA_VERSION" ];then
+    USE_CUDA=no
+    warn "Warning: CUDA not located, installing without GPU support!"
+  else
+    warn "CUDA seems to be installed, but install dir not found, hopefully CMake will find it"
+  fi
 fi
 
 
@@ -185,6 +194,7 @@ if [ ! -e marian/build-$fingerprint ]; then
     -DCMAKE_REQUIRED_FLAGS="-lpthread" \
 	-DUSE_SENTENCEPIECE=on \
 	-DBUILD_CPU=on \
+	-DUSE_DOXYGEN=off \
     -DBoost_DEBUG=1 ..
 	
   # compile marian
