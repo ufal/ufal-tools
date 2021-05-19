@@ -81,7 +81,7 @@ fi
 
 
 # use my MKL on AIC
-if [[ "$hostname" == cpu-node* ]]; then
+if [[ "$hostname" == cpu-node* ]] ||  [[ "$hostname" == gpu-node* ]]  ; then
   MKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0
 #  [ -d "$MKL_ROOT" ] || die "MKL missing: $MKL_ROOT" -- not strictly needed
   MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
@@ -91,6 +91,18 @@ fi
 if [ -d /mnt/storage-brno8/home/cepin/mkl/2021.2.0/ ];then
   MKL_ROOT=/mnt/storage-brno8/home/cepin/mkl/2021.2.0/ 
   MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+fi
+
+#TODO check more possible MKL paths before downloading
+if [ -z $MKL_ROOT ];then
+	echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
+  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
+  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$DESIREDDIR"/mkl
+  MKL_ROOT="$DESIREDDIR"/mkl
+  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+
+
+
 fi
 
 ### Less environment specific steps
@@ -131,8 +143,14 @@ if [ ! x$USE_CUDA == xyes ]; then
   cuda_flag="-DCOMPILE_CUDA=off"
   fingerprint="CPUONLY-CPU-$instr"
 else
+if [[ ! -z "$CUDA_HOME" ]]; then
   warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
-  cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
+    cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
+
+  else
+   warn "CUDA seems to be present, but can't find CUDA_HOME, hopufully cmake will find it"
+
+  fi
   fingerprint="CUDA-$CUDA_VERSION-CPU-$instr"
 fi
 warn "Compiling this version: $fingerprint"
