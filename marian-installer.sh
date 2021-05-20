@@ -79,12 +79,25 @@ then
   #module add cmake-3.6.1
 fi
 
+#use my MKL on UFAL machines
+if [[ "$hostname" == *dll* ]] ; then
+#TODO
+ if [ -d /opt/intel/mkl/ ];then
+        MKL_ROOT=/opt/intel/mkl/
+        MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+
+  fi
+
+fi
+
 
 # use my MKL on AIC
 if [[ "$hostname" == cpu-node* ]] ||  [[ "$hostname" == gpu-node* ]]  ; then
-  MKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0
-#  [ -d "$MKL_ROOT" ] || die "MKL missing: $MKL_ROOT" -- not strictly needed
-  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+ if [ -d /lnet/aic/personal/jon/mkl/2021.2.0 ];then
+     	MKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0
+        MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+
+  fi
 fi
 
 # use MKL on metacentrum
@@ -94,16 +107,14 @@ if [ -d /mnt/storage-brno8/home/cepin/mkl/2021.2.0/ ];then
 fi
 
 #TODO check more possible MKL paths before downloading
-if [ -z $MKL_ROOT ];then
-	echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
-  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
-  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$DESIREDDIR"/mkl
-  MKL_ROOT="$DESIREDDIR"/mkl
-  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
+#if [ -z $MKL_ROOT ];then
+#	echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
+#  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
+#  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$DESIREDDIR"/mkl
+#  MKL_ROOT="$DESIREDDIR"/mkl/mkl/2021.2.0/
+#  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT "
 
-
-
-fi
+#fi
 
 ### Less environment specific steps
 
