@@ -107,14 +107,20 @@ if [ -d /mnt/storage-brno8/home/cepin/mkl/2021.2.0/ ];then
 fi
 
 #TODO check more possible MKL paths before downloading
-#if [ -z $MKL_ROOT ];then
-#	echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
-#  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
-#  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$DESIREDDIR"/mkl
-#  MKL_ROOT="$DESIREDDIR"/mkl/mkl/2021.2.0/
-#  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT "
+if [ -z $MKL_ROOT ];then
+	echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
+  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
+  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$DESIREDDIR"/mkl
+  install_exit_code=$?
+  if [ $install_exit_code -eq 1 ]; then
+    MKL_ROOT="$DESIREDDIR"/mkl/mkl/2021.2.0/
+    MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT "
+  else  
+    warn "MKL install failed"
+  fi
 
-#fi
+
+fi
 
 ### Less environment specific steps
 
