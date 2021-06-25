@@ -1,0 +1,1141 @@
+#!/usr/bin/perl
+# maps stdin Devanagari into Ondrej Bojar's random roman/latin script
+# Ondrej Bojar
+# bojar@ufal.mff.cuni.cz
+
+use strict;
+use utf8;
+use Getopt::Long;
+
+binmode(STDIN, ":utf8");
+binmode(STDOUT, ":utf8");
+binmode(STDERR, ":utf8");
+
+my $escape_char = "_";
+my $inverse = 0;
+my $digits_latin = 0; # collapse devanagari and latin digits into latin
+my $dont_mark_originals = 0; # don't add _ before untransliterated tokens
+GetOptions(
+  "inverse" => \$inverse,
+  "digits-latin" => \$digits_latin,
+  "dont-mark-originals" => \$dont_mark_originals,
+) or exit 1;
+
+my @unmapped = split //, "/- ,?:()[]!@#\%\$^&*+\\<>.~\"'";
+
+my @map = (
+  "a", "0627",  # ARABIC LETTER ALEF;Lo;0;AL;;;;;N;;;;; 438941 occs, 456415 decomposed occs
+  "ỳ", "06CC",  # ARABIC LETTER FARSI YEH;Lo;0;AL;;;;;N;ARABIC LETTER DOTLESS YA;;;; 335919 occs, 335919 decomposed occs
+  "W", "0648",  # ARABIC LETTER WAW;Lo;0;AL;;;;;N;;;;; 229840 occs, 231787 decomposed occs
+  "r", "0631",  # ARABIC LETTER REH;Lo;0;AL;;;;;N;ARABIC LETTER RA;;;; 226897 occs, 226897 decomposed occs
+  "k", "06A9",  # ARABIC LETTER KEHEH;Lo;0;AL;;;;;N;ARABIC LETTER OPEN CAF;;;; 219690 occs, 219690 decomposed occs
+  "Ħ", "06C1",  # ARABIC LETTER HEH GOAL;Lo;0;AL;;;;;N;ARABIC LETTER HA GOAL;;;; 181456 occs, 181676 decomposed occs
+  "ń", "0646",  # ARABIC LETTER NOON;Lo;0;AL;;;;;N;;;;; 175306 occs, 175306 decomposed occs
+  "ý", "06D2",  # ARABIC LETTER YEH BARREE;Lo;0;AL;;;;;N;ARABIC LETTER YA BARREE;;;; 174132 occs, 175224 decomposed occs
+  "m", "0645",  # ARABIC LETTER MEEM;Lo;0;AL;;;;;N;;;;; 166123 occs, 166123 decomposed occs
+  "t", "062A",  # ARABIC LETTER TEH;Lo;0;AL;;;;;N;ARABIC LETTER TAA;;;; 135138 occs, 135138 decomposed occs
+  "s", "0633",  # ARABIC LETTER SEEN;Lo;0;AL;;;;;N;;;;; 125291 occs, 125291 decomposed occs
+  "L", "0644",  # ARABIC LETTER LAM;Lo;0;AL;;;;;N;;;;; 119443 occs, 119443 decomposed occs
+  "b", "0628",  # ARABIC LETTER BEH;Lo;0;AL;;;;;N;ARABIC LETTER BAA;;;; 98150 occs, 98150 decomposed occs
+  "D", "062F",  # ARABIC LETTER DAL;Lo;0;AL;;;;;N;;;;; 90629 occs, 90629 decomposed occs
+  "n", "06BA",  # ARABIC LETTER NOON GHUNNA;Lo;0;AL;;;;;N;ARABIC LETTER DOTLESS NOON;;;; 85353 occs, 85353 decomposed occs
+  "j", "062C",  # ARABIC LETTER JEEM;Lo;0;AL;;;;;N;;;;; 60741 occs, 60741 decomposed occs
+  "p", "067E",  # ARABIC LETTER PEH;Lo;0;AL;;;;;N;ARABIC LETTER TAA WITH THREE DOTS BELOW;;;; 53747 occs, 53747 decomposed occs
+  "ĥ", "06BE",  # ARABIC LETTER HEH DOACHASHMEE;Lo;0;AL;;;;;N;ARABIC LETTER KNOTTED HA;;;; 53374 occs, 53374 decomposed occs
+  "G", "06AF",  # ARABIC LETTER GAF;Lo;0;AL;;;;;N;;*;;; 41694 occs, 41694 decomposed occs
+  "i", "0639",  # ARABIC LETTER AIN;Lo;0;AL;;;;;N;;;;; 41473 occs, 41473 decomposed occs
+  "|", "06D4",  # ARABIC FULL STOP;Po;0;AL;;;;;N;ARABIC PERIOD;;;; 39305 occs, 39305 decomposed occs
+  "ŷ", "0626",  # ARABIC LETTER YEH WITH HAMZA ABOVE;Lo;0;AL;064A 0654;;;;N;ARABIC LETTER HAMZAH ON YA;;;; 35672 occs, 0 decomposed occs
+  "Q", "0642",  # ARABIC LETTER QAF;Lo;0;AL;;;;;N;;;;; 34736 occs, 34736 decomposed occs
+  "š", "0634",  # ARABIC LETTER SHEEN;Lo;0;AL;;;;;N;;;;; 31424 occs, 31424 decomposed occs
+  "f", "0641",  # ARABIC LETTER FEH;Lo;0;AL;;;;;N;ARABIC LETTER FA;;;; 31327 occs, 31327 decomposed occs
+  "H", "062D",  # ARABIC LETTER HAH;Lo;0;AL;;;;;N;ARABIC LETTER HAA;;;; 29670 occs, 29670 decomposed occs
+  "Ż", "0632",  # ARABIC LETTER ZAIN;Lo;0;AL;;;;;N;;;;; 26624 occs, 26624 decomposed occs
+  "Ķ", "062E",  # ARABIC LETTER KHAH;Lo;0;AL;;;;;N;ARABIC LETTER KHAA;;;; 22055 occs, 22055 decomposed occs
+  "č", "0686",  # ARABIC LETTER TCHEH;Lo;0;AL;;;;;N;ARABIC LETTER HAA WITH MIDDLE THREE DOTS DOWNWARD;;;; 19749 occs, 19749 decomposed occs
+  "S", "0635",  # ARABIC LETTER SAD;Lo;0;AL;;;;;N;;;;; 17527 occs, 17527 decomposed occs
+  "â", "0622",  # ARABIC LETTER ALEF WITH MADDA ABOVE;Lo;0;AL;0627 0653;;;;N;ARABIC LETTER MADDAH ON ALEF;;;; 17417 occs, 0 decomposed occs
+  "T", "0637",  # ARABIC LETTER TAH;Lo;0;AL;;;;;N;;;;; 16678 occs, 16678 decomposed occs
+  "ŧ", "0679",  # ARABIC LETTER TTEH;Lo;0;AL;;;;;N;ARABIC LETTER TAA WITH SMALL TAH;;;; 15879 occs, 15879 decomposed occs
+  "¦", "060C",  # ARABIC COMMA;Po;0;CS;;;;;N;;;;; 15753 occs, 15753 decomposed occs
+  "ř", "0691",  # ARABIC LETTER RREH;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH SMALL TAH;;;; 9348 occs, 9348 decomposed occs
+  "Ď", "0688",  # ARABIC LETTER DDAL;Lo;0;AL;;;;;N;ARABIC LETTER DAL WITH SMALL TAH;;;; 7887 occs, 7887 decomposed occs
+  "Ð", "0636",  # ARABIC LETTER DAD;Lo;0;AL;;;;;N;;;;; 6784 occs, 6784 decomposed occs
+  "Ģ", "063A",  # ARABIC LETTER GHAIN;Lo;0;AL;;;;;N;;;;; 6684 occs, 6684 decomposed occs
+  "Z", "0638",  # ARABIC LETTER ZAH;Lo;0;AL;;;;;N;ARABIC LETTER DHAH;;;; 6260 occs, 6260 decomposed occs
+  "ţ", "062B",  # ARABIC LETTER THEH;Lo;0;AL;;;;;N;ARABIC LETTER THAA;;;; 4707 occs, 4707 decomposed occs
+  "Ť", "0630",  # ARABIC LETTER THAL;Lo;0;AL;;;;;N;;;;; 4360 occs, 4360 decomposed occs
+  "’", "0621",  # ARABIC LETTER HAMZA;Lo;0;AL;;;;;N;ARABIC LETTER HAMZAH;;;; 4108 occs, 4108 decomposed occs
+  "K", "0650",  # ARABIC KASRA;Mn;32;NSM;;;;;N;ARABIC KASRAH;;;; 2660 occs, 2660 decomposed occs
+  "Đ", "064F",  # ARABIC DAMMA;Mn;31;NSM;;;;;N;ARABIC DAMMAH;;;; 2220 occs, 2220 decomposed occs
+  "ã", "0649",  # ARABIC LETTER ALEF MAKSURA;Lo;0;AL;;;;;N;ARABIC LETTER ALEF MAQSURAH;;;; 1981 occs, 1981 decomposed occs
+  "Ŵ", "0624",  # ARABIC LETTER WAW WITH HAMZA ABOVE;Lo;0;AL;0648 0654;;;;N;ARABIC LETTER HAMZAH ON WAW;;;; 1947 occs, 0 decomposed occs
+  "y", "064A",  # ARABIC LETTER YEH;Lo;0;AL;;;;;N;ARABIC LETTER YA;;;; 1450 occs, 37122 decomposed occs
+  "¿", "061F",  # ARABIC QUESTION MARK;Po;0;AL;;;;;N;;;;; 1328 occs, 1328 decomposed occs
+  "↑", "FDF2",  # ARABIC LIGATURE ALLAH ISOLATED FORM;Lo;0;AL;<isolated> 0627 0644 0644 0647;;;;N;;;;; 1285 occs, 1285 decomposed occs
+  "ÿ", "06D3",  # ARABIC LETTER YEH BARREE WITH HAMZA ABOVE;Lo;0;AL;06D2 0654;;;;N;ARABIC LETTER HAMZAH ON YA BARREE;;;; 1092 occs, 0 decomposed occs
+  "ª", "0670",  # ARABIC LETTER SUPERSCRIPT ALEF;Mn;35;NSM;;;;;N;ARABIC ALEF ABOVE;;;; 1039 occs, 1039 decomposed occs
+  "´", "0654",  # ARABIC HAMZA ABOVE;Mn;230;NSM;;;;;N;;;;; 863 occs, 39883 decomposed occs
+  "¨", "064B",  # ARABIC FATHATAN;Mn;27;NSM;;;;;N;;;;; 600 occs, 600 decomposed occs
+  "1", "06F1",  # EXTENDED ARABIC-INDIC DIGIT ONE;Nd;0;EN;;1;1;1;N;EASTERN ARABIC-INDIC DIGIT ONE;;;; 472 occs, 472 decomposed occs
+  "ĸ", "0643",  # ARABIC LETTER KAF;Lo;0;AL;;;;;N;ARABIC LETTER CAF;;;; 356 occs, 356 decomposed occs
+  "F", "064E",  # ARABIC FATHA;Mn;30;NSM;;;;;N;ARABIC FATHAH;;;; 332 occs, 332 decomposed occs
+  "ĵ", "0698",  # ARABIC LETTER JEH;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH THREE DOTS ABOVE;;;; 284 occs, 284 decomposed occs
+  "9", "06F9",  # EXTENDED ARABIC-INDIC DIGIT NINE;Nd;0;EN;;9;9;9;N;EASTERN ARABIC-INDIC DIGIT NINE;;;; 240 occs, 240 decomposed occs
+  ";", "061B",  # ARABIC SEMICOLON;Po;0;AL;;;;;N;;;;; 239 occs, 239 decomposed occs
+  "╰", "0651",  # ARABIC SHADDA;Mn;33;NSM;;;;;N;ARABIC SHADDAH;;;; 232 occs, 232 decomposed occs
+  "ħ", "06C2",  # ARABIC LETTER HEH GOAL WITH HAMZA ABOVE;Lo;0;AL;06C1 0654;;;;N;ARABIC LETTER HAMZAH ON HA GOAL;;;; 220 occs, 0 decomposed occs
+  "ṯ", "06C3",  # ARABIC LETTER TEH MARBUTA GOAL;Lo;0;AL;;;;;N;ARABIC LETTER TAA MARBUTAH GOAL;;;; 210 occs, 210 decomposed occs
+  "2", "06F2",  # EXTENDED ARABIC-INDIC DIGIT TWO;Nd;0;EN;;2;2;2;N;EASTERN ARABIC-INDIC DIGIT TWO;;;; 172 occs, 172 decomposed occs
+  "⎻", "0640",  # ARABIC TATWEEL;Lm;0;AL;;;;;N;;;;; 168 occs, 168 decomposed occs
+  "7", "06F7",  # EXTENDED ARABIC-INDIC DIGIT SEVEN;Nd;0;EN;;7;7;7;N;EASTERN ARABIC-INDIC DIGIT SEVEN;;;; 124 occs, 124 decomposed occs
+  "8", "06F8",  # EXTENDED ARABIC-INDIC DIGIT EIGHT;Nd;0;EN;;8;8;8;N;EASTERN ARABIC-INDIC DIGIT EIGHT;;;; 116 occs, 116 decomposed occs
+  "0", "06F0",  # EXTENDED ARABIC-INDIC DIGIT ZERO;Nd;0;EN;;0;0;0;N;EASTERN ARABIC-INDIC DIGIT ZERO;;;; 112 occs, 112 decomposed occs
+  "5", "06F5",  # EXTENDED ARABIC-INDIC DIGIT FIVE;Nd;0;EN;;5;5;5;N;EASTERN ARABIC-INDIC DIGIT FIVE;;;; 108 occs, 108 decomposed occs
+  "3", "06F3",  # EXTENDED ARABIC-INDIC DIGIT THREE;Nd;0;EN;;3;3;3;N;EASTERN ARABIC-INDIC DIGIT THREE;;;; 96 occs, 96 decomposed occs
+  "˚", "0652",  # ARABIC SUKUN;Mn;34;NSM;;;;;N;;;;; 88 occs, 88 decomposed occs
+  "4", "06F4",  # EXTENDED ARABIC-INDIC DIGIT FOUR;Nd;0;EN;;4;4;4;N;EASTERN ARABIC-INDIC DIGIT FOUR;;;; 84 occs, 84 decomposed occs
+  "h", "0647",  # ARABIC LETTER HEH;Lo;0;AL;;;;;N;ARABIC LETTER HA;;;; 80 occs, 80 decomposed occs
+  "6", "06F6",  # EXTENDED ARABIC-INDIC DIGIT SIX;Nd;0;EN;;6;6;6;N;EASTERN ARABIC-INDIC DIGIT SIX;;;; 68 occs, 68 decomposed occs
+  "ṭ", "0629",  # ARABIC LETTER TEH MARBUTA;Lo;0;AL;;;;;N;ARABIC LETTER TAA MARBUTAH;;;; 52 occs, 52 decomposed occs
+  "ĳ", "06C0",  # ARABIC LETTER HEH WITH YEH ABOVE;Lo;0;AL;06D5 0654;;;;N;ARABIC LETTER HAMZAH ON HA;;;; 48 occs, 0 decomposed occs
+  "¶", "066A",  # ARABIC PERCENT SIGN;Po;0;ET;;;;;N;;;;; 44 occs, 44 decomposed occs
+  "á", "0623",  # ARABIC LETTER ALEF WITH HAMZA ABOVE;Lo;0;AL;0627 0654;;;;N;ARABIC LETTER HAMZAH ON ALEF;;;; 41 occs, 0 decomposed occs
+  "ẃ", "FE85",  # ARABIC LETTER WAW WITH HAMZA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0624;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH ON WAW;;;; 20 occs, 20 decomposed occs
+  "ą", "0625",  # ARABIC LETTER ALEF WITH HAMZA BELOW;Lo;0;AL;0627 0655;;;;N;ARABIC LETTER HAMZAH UNDER ALEF;;;; 16 occs, 0 decomposed occs
+  "›", "066C",  # ARABIC THOUSANDS SEPARATOR;Po;0;AN;;;;;N;;;;; 16 occs, 16 decomposed occs
+  "ϰ", "066D",  # ARABIC FIVE POINTED STAR;Po;0;AL;;;;;N;;;;; 9 occs, 9 decomposed occs
+  "ϱ", "064C",  # ARABIC DAMMATAN;Mn;28;NSM;;;;;N;;;;; 8 occs, 8 decomposed occs
+  "„", "064D",  # ARABIC KASRATAN;Mn;29;NSM;;;;;N;;;;; 8 occs, 8 decomposed occs
+  "“", "0612",  # ARABIC SIGN RAHMATULLAH ALAYHE;Mn;230;NSM;;;;;N;;;;; 4 occs, 4 decomposed occs
+  "↓", "0656",  # ARABIC SUBSCRIPT ALEF;Mn;220;NSM;;;;;N;;;;; 4 occs, 4 decomposed occs
+  "Ś", "06AA",  # ARABIC LETTER SWASH KAF;Lo;0;AL;;;;;N;ARABIC LETTER SWASH CAF;;;; 4 occs, 4 decomposed occs
+  "Œ", "FDFA",  # ARABIC LIGATURE SALLALLAHOU ALAYHE WASALLAM;Lo;0;AL;<isolated> 0635 0644 0649 0020 0627 0644 0644 0647 0020 0639 0644 064A 0647 0020 0648 0633 0644 0645;;;;N;ARABIC LETTER SALLALLAHOU ALAYHE WASALLAM;;;; 4 occs, 4 decomposed occs
+  "º", "0600",  # ARABIC NUMBER SIGN;Cf;0;AN;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "⎼", "0601",  # ARABIC SIGN SANAH;Cf;0;AN;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "⎽", "0602",  # ARABIC FOOTNOTE MARKER;Cf;0;AN;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "‗", "0603",  # ARABIC SIGN SAFHA;Cf;0;AN;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "ø", "0606",  # ARABIC-INDIC CUBE ROOT;Sm;0;ON;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "Ø", "0607",  # ARABIC-INDIC FOURTH ROOT;Sm;0;ON;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0608",  # ARABIC RAY;Sm;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0609",  # ARABIC-INDIC PER MILLE SIGN;Po;0;ET;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "060A",  # ARABIC-INDIC PER TEN THOUSAND SIGN;Po;0;ET;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "060D",  # ARABIC DATE SEPARATOR;Po;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "060E",  # ARABIC POETIC VERSE SIGN;So;0;ON;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "060F",  # ARABIC SIGN MISRA;So;0;ON;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0610",  # ARABIC SIGN SALLALLAHOU ALAYHE WASSALLAM;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0611",  # ARABIC SIGN ALAYHE ASSALLAM;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0613",  # ARABIC SIGN RADI ALLAHOU ANHU;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0614",  # ARABIC SIGN TAKHALLUS;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0615",  # ARABIC SMALL HIGH TAH;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0616",  # ARABIC SMALL HIGH LIGATURE ALEF WITH LAM WITH YEH;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0617",  # ARABIC SMALL HIGH ZAIN;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0618",  # ARABIC SMALL FATHA;Mn;30;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0619",  # ARABIC SMALL DAMMA;Mn;31;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "061A",  # ARABIC SMALL KASRA;Mn;32;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "061E",  # ARABIC TRIPLE DOT PUNCTUATION MARK;Po;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "063B",  # ARABIC LETTER KEHEH WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "063C",  # ARABIC LETTER KEHEH WITH THREE DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "063D",  # ARABIC LETTER FARSI YEH WITH INVERTED V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "063E",  # ARABIC LETTER FARSI YEH WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "063F",  # ARABIC LETTER FARSI YEH WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "╯", "0653",  # ARABIC MADDAH ABOVE;Mn;230;NSM;;;;;N;;;;; 0 occs, 17417 decomposed occs
+  "‚", "0655",  # ARABIC HAMZA BELOW;Mn;220;NSM;;;;;N;;;;; 0 occs, 16 decomposed occs
+#  "", "0657",  # ARABIC INVERTED DAMMA;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0658",  # ARABIC MARK NOON GHUNNA;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0659",  # ARABIC ZWARAKAY;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "065A",  # ARABIC VOWEL SIGN SMALL V ABOVE;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "065B",  # ARABIC VOWEL SIGN INVERTED SMALL V ABOVE;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "065C",  # ARABIC VOWEL SIGN DOT BELOW;Mn;220;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "065D",  # ARABIC REVERSED DAMMA;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "065E",  # ARABIC FATHA WITH TWO DOTS;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0660",  # ARABIC-INDIC DIGIT ZERO;Nd;0;AN;;0;0;0;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0661",  # ARABIC-INDIC DIGIT ONE;Nd;0;AN;;1;1;1;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0662",  # ARABIC-INDIC DIGIT TWO;Nd;0;AN;;2;2;2;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0663",  # ARABIC-INDIC DIGIT THREE;Nd;0;AN;;3;3;3;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0664",  # ARABIC-INDIC DIGIT FOUR;Nd;0;AN;;4;4;4;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0665",  # ARABIC-INDIC DIGIT FIVE;Nd;0;AN;;5;5;5;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0666",  # ARABIC-INDIC DIGIT SIX;Nd;0;AN;;6;6;6;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0667",  # ARABIC-INDIC DIGIT SEVEN;Nd;0;AN;;7;7;7;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0668",  # ARABIC-INDIC DIGIT EIGHT;Nd;0;AN;;8;8;8;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0669",  # ARABIC-INDIC DIGIT NINE;Nd;0;AN;;9;9;9;N;;;;; 0 occs, 0 decomposed occs
+#  "", "066B",  # ARABIC DECIMAL SEPARATOR;Po;0;AN;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "066E",  # ARABIC LETTER DOTLESS BEH;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "066F",  # ARABIC LETTER DOTLESS QAF;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+  "å", "0671",  # ARABIC LETTER ALEF WASLA;Lo;0;AL;;;;;N;ARABIC LETTER HAMZAT WASL ON ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "0672",  # ARABIC LETTER ALEF WITH WAVY HAMZA ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER WAVY HAMZAH ON ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "0673",  # ARABIC LETTER ALEF WITH WAVY HAMZA BELOW;Lo;0;AL;;;;;N;ARABIC LETTER WAVY HAMZAH UNDER ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "0674",  # ARABIC LETTER HIGH HAMZA;Lo;0;AL;;;;;N;ARABIC LETTER HIGH HAMZAH;;;; 0 occs, 0 decomposed occs
+#  "", "0675",  # ARABIC LETTER HIGH HAMZA ALEF;Lo;0;AL;<compat> 0627 0674;;;;N;ARABIC LETTER HIGH HAMZAH ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "0676",  # ARABIC LETTER HIGH HAMZA WAW;Lo;0;AL;<compat> 0648 0674;;;;N;ARABIC LETTER HIGH HAMZAH WAW;;;; 0 occs, 0 decomposed occs
+#  "", "0677",  # ARABIC LETTER U WITH HAMZA ABOVE;Lo;0;AL;<compat> 06C7 0674;;;;N;ARABIC LETTER HIGH HAMZAH WAW WITH DAMMAH;;;; 0 occs, 0 decomposed occs
+#  "", "0678",  # ARABIC LETTER HIGH HAMZA YEH;Lo;0;AL;<compat> 064A 0674;;;;N;ARABIC LETTER HIGH HAMZAH YA;;;; 0 occs, 0 decomposed occs
+#  "", "067A",  # ARABIC LETTER TTEHEH;Lo;0;AL;;;;;N;ARABIC LETTER TAA WITH TWO DOTS VERTICAL ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "067B",  # ARABIC LETTER BEEH;Lo;0;AL;;;;;N;ARABIC LETTER BAA WITH TWO DOTS VERTICAL BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "067C",  # ARABIC LETTER TEH WITH RING;Lo;0;AL;;;;;N;ARABIC LETTER TAA WITH RING;;;; 0 occs, 0 decomposed occs
+#  "", "067D",  # ARABIC LETTER TEH WITH THREE DOTS ABOVE DOWNWARDS;Lo;0;AL;;;;;N;ARABIC LETTER TAA WITH THREE DOTS ABOVE DOWNWARD;;;; 0 occs, 0 decomposed occs
+#  "", "067F",  # ARABIC LETTER TEHEH;Lo;0;AL;;;;;N;ARABIC LETTER TAA WITH FOUR DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "0680",  # ARABIC LETTER BEHEH;Lo;0;AL;;;;;N;ARABIC LETTER BAA WITH FOUR DOTS BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "0681",  # ARABIC LETTER HAH WITH HAMZA ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER HAMZAH ON HAA;;;; 0 occs, 0 decomposed occs
+#  "", "0682",  # ARABIC LETTER HAH WITH TWO DOTS VERTICAL ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER HAA WITH TWO DOTS VERTICAL ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "0683",  # ARABIC LETTER NYEH;Lo;0;AL;;;;;N;ARABIC LETTER HAA WITH MIDDLE TWO DOTS;;;; 0 occs, 0 decomposed occs
+#  "", "0684",  # ARABIC LETTER DYEH;Lo;0;AL;;;;;N;ARABIC LETTER HAA WITH MIDDLE TWO DOTS VERTICAL;;;; 0 occs, 0 decomposed occs
+#  "", "0685",  # ARABIC LETTER HAH WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER HAA WITH THREE DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "0687",  # ARABIC LETTER TCHEHEH;Lo;0;AL;;;;;N;ARABIC LETTER HAA WITH MIDDLE FOUR DOTS;;;; 0 occs, 0 decomposed occs
+#  "", "0689",  # ARABIC LETTER DAL WITH RING;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "068A",  # ARABIC LETTER DAL WITH DOT BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "068B",  # ARABIC LETTER DAL WITH DOT BELOW AND SMALL TAH;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "068C",  # ARABIC LETTER DAHAL;Lo;0;AL;;;;;N;ARABIC LETTER DAL WITH TWO DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "068D",  # ARABIC LETTER DDAHAL;Lo;0;AL;;;;;N;ARABIC LETTER DAL WITH TWO DOTS BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "068E",  # ARABIC LETTER DUL;Lo;0;AL;;;;;N;ARABIC LETTER DAL WITH THREE DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "068F",  # ARABIC LETTER DAL WITH THREE DOTS ABOVE DOWNWARDS;Lo;0;AL;;;;;N;ARABIC LETTER DAL WITH THREE DOTS ABOVE DOWNWARD;;;; 0 occs, 0 decomposed occs
+#  "", "0690",  # ARABIC LETTER DAL WITH FOUR DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0692",  # ARABIC LETTER REH WITH SMALL V;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH SMALL V;;;; 0 occs, 0 decomposed occs
+#  "", "0693",  # ARABIC LETTER REH WITH RING;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH RING;;;; 0 occs, 0 decomposed occs
+#  "", "0694",  # ARABIC LETTER REH WITH DOT BELOW;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH DOT BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "0695",  # ARABIC LETTER REH WITH SMALL V BELOW;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH SMALL V BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "0696",  # ARABIC LETTER REH WITH DOT BELOW AND DOT ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH DOT BELOW AND DOT ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "0697",  # ARABIC LETTER REH WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH TWO DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "0699",  # ARABIC LETTER REH WITH FOUR DOTS ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER RA WITH FOUR DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "069A",  # ARABIC LETTER SEEN WITH DOT BELOW AND DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "069B",  # ARABIC LETTER SEEN WITH THREE DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "069C",  # ARABIC LETTER SEEN WITH THREE DOTS BELOW AND THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "069D",  # ARABIC LETTER SAD WITH TWO DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "069E",  # ARABIC LETTER SAD WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "069F",  # ARABIC LETTER TAH WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06A0",  # ARABIC LETTER AIN WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06A1",  # ARABIC LETTER DOTLESS FEH;Lo;0;AL;;;;;N;ARABIC LETTER DOTLESS FA;;;; 0 occs, 0 decomposed occs
+#  "", "06A2",  # ARABIC LETTER FEH WITH DOT MOVED BELOW;Lo;0;AL;;;;;N;ARABIC LETTER FA WITH DOT MOVED BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "06A3",  # ARABIC LETTER FEH WITH DOT BELOW;Lo;0;AL;;;;;N;ARABIC LETTER FA WITH DOT BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "06A4",  # ARABIC LETTER VEH;Lo;0;AL;;;;;N;ARABIC LETTER FA WITH THREE DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06A5",  # ARABIC LETTER FEH WITH THREE DOTS BELOW;Lo;0;AL;;;;;N;ARABIC LETTER FA WITH THREE DOTS BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "06A6",  # ARABIC LETTER PEHEH;Lo;0;AL;;;;;N;ARABIC LETTER FA WITH FOUR DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06A7",  # ARABIC LETTER QAF WITH DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06A8",  # ARABIC LETTER QAF WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06AB",  # ARABIC LETTER KAF WITH RING;Lo;0;AL;;;;;N;ARABIC LETTER CAF WITH RING;;;; 0 occs, 0 decomposed occs
+#  "", "06AC",  # ARABIC LETTER KAF WITH DOT ABOVE;Lo;0;AL;;;;;N;ARABIC LETTER CAF WITH DOT ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06AD",  # ARABIC LETTER NG;Lo;0;AL;;;;;N;ARABIC LETTER CAF WITH THREE DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06AE",  # ARABIC LETTER KAF WITH THREE DOTS BELOW;Lo;0;AL;;;;;N;ARABIC LETTER CAF WITH THREE DOTS BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "06B0",  # ARABIC LETTER GAF WITH RING;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B1",  # ARABIC LETTER NGOEH;Lo;0;AL;;;;;N;ARABIC LETTER GAF WITH TWO DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06B2",  # ARABIC LETTER GAF WITH TWO DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B3",  # ARABIC LETTER GUEH;Lo;0;AL;;;;;N;ARABIC LETTER GAF WITH TWO DOTS VERTICAL BELOW;;;; 0 occs, 0 decomposed occs
+#  "", "06B4",  # ARABIC LETTER GAF WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B5",  # ARABIC LETTER LAM WITH SMALL V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B6",  # ARABIC LETTER LAM WITH DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B7",  # ARABIC LETTER LAM WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B8",  # ARABIC LETTER LAM WITH THREE DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06B9",  # ARABIC LETTER NOON WITH DOT BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06BB",  # ARABIC LETTER RNOON;Lo;0;AL;;;;;N;ARABIC LETTER DOTLESS NOON WITH SMALL TAH;;;; 0 occs, 0 decomposed occs
+#  "", "06BC",  # ARABIC LETTER NOON WITH RING;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06BD",  # ARABIC LETTER NOON WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06BF",  # ARABIC LETTER TCHEH WITH DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06C4",  # ARABIC LETTER WAW WITH RING;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06C5",  # ARABIC LETTER KIRGHIZ OE;Lo;0;AL;;;;;N;ARABIC LETTER WAW WITH BAR;;;; 0 occs, 0 decomposed occs
+#  "", "06C6",  # ARABIC LETTER OE;Lo;0;AL;;;;;N;ARABIC LETTER WAW WITH SMALL V;;;; 0 occs, 0 decomposed occs
+#  "", "06C7",  # ARABIC LETTER U;Lo;0;AL;;;;;N;ARABIC LETTER WAW WITH DAMMAH;;;; 0 occs, 0 decomposed occs
+#  "", "06C8",  # ARABIC LETTER YU;Lo;0;AL;;;;;N;ARABIC LETTER WAW WITH ALEF ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06C9",  # ARABIC LETTER KIRGHIZ YU;Lo;0;AL;;;;;N;ARABIC LETTER WAW WITH INVERTED SMALL V;;;; 0 occs, 0 decomposed occs
+#  "", "06CA",  # ARABIC LETTER WAW WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06CB",  # ARABIC LETTER VE;Lo;0;AL;;;;;N;ARABIC LETTER WAW WITH THREE DOTS ABOVE;;;; 0 occs, 0 decomposed occs
+#  "", "06CD",  # ARABIC LETTER YEH WITH TAIL;Lo;0;AL;;;;;N;ARABIC LETTER YA WITH TAIL;;;; 0 occs, 0 decomposed occs
+#  "", "06CE",  # ARABIC LETTER YEH WITH SMALL V;Lo;0;AL;;;;;N;ARABIC LETTER YA WITH SMALL V;;;; 0 occs, 0 decomposed occs
+#  "", "06CF",  # ARABIC LETTER WAW WITH DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06D0",  # ARABIC LETTER E;Lo;0;AL;;;;;N;ARABIC LETTER YA WITH TWO DOTS VERTICAL BELOW;*;;; 0 occs, 0 decomposed occs
+#  "", "06D1",  # ARABIC LETTER YEH WITH THREE DOTS BELOW;Lo;0;AL;;;;;N;ARABIC LETTER YA WITH THREE DOTS BELOW;;;; 0 occs, 0 decomposed occs
+  "æ", "06D5",  # ARABIC LETTER AE;Lo;0;AL;;;;;N;;;;; 0 occs, 48 decomposed occs
+#  "", "06D6",  # ARABIC SMALL HIGH LIGATURE SAD WITH LAM WITH ALEF MAKSURA;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06D7",  # ARABIC SMALL HIGH LIGATURE QAF WITH LAM WITH ALEF MAKSURA;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06D8",  # ARABIC SMALL HIGH MEEM INITIAL FORM;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06D9",  # ARABIC SMALL HIGH LAM ALEF;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06DA",  # ARABIC SMALL HIGH JEEM;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06DB",  # ARABIC SMALL HIGH THREE DOTS;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06DC",  # ARABIC SMALL HIGH SEEN;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06DD",  # ARABIC END OF AYAH;Cf;0;AN;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06DE",  # ARABIC START OF RUB EL HIZB;Me;0;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06DF",  # ARABIC SMALL HIGH ROUNDED ZERO;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E0",  # ARABIC SMALL HIGH UPRIGHT RECTANGULAR ZERO;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E1",  # ARABIC SMALL HIGH DOTLESS HEAD OF KHAH;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E2",  # ARABIC SMALL HIGH MEEM ISOLATED FORM;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E3",  # ARABIC SMALL LOW SEEN;Mn;220;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E4",  # ARABIC SMALL HIGH MADDA;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E5",  # ARABIC SMALL WAW;Lm;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E6",  # ARABIC SMALL YEH;Lm;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E7",  # ARABIC SMALL HIGH YEH;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E8",  # ARABIC SMALL HIGH NOON;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06E9",  # ARABIC PLACE OF SAJDAH;So;0;ON;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06EA",  # ARABIC EMPTY CENTRE LOW STOP;Mn;220;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06EB",  # ARABIC EMPTY CENTRE HIGH STOP;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06EC",  # ARABIC ROUNDED HIGH STOP WITH FILLED CENTRE;Mn;230;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06ED",  # ARABIC SMALL LOW MEEM;Mn;220;NSM;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06EE",  # ARABIC LETTER DAL WITH INVERTED V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06EF",  # ARABIC LETTER REH WITH INVERTED V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06FA",  # ARABIC LETTER SHEEN WITH DOT BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06FB",  # ARABIC LETTER DAD WITH DOT BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06FC",  # ARABIC LETTER GHAIN WITH DOT BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06FD",  # ARABIC SIGN SINDHI AMPERSAND;So;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06FE",  # ARABIC SIGN SINDHI POSTPOSITION MEN;So;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "06FF",  # ARABIC LETTER HEH WITH INVERTED V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0750",  # ARABIC LETTER BEH WITH THREE DOTS HORIZONTALLY BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0751",  # ARABIC LETTER BEH WITH DOT BELOW AND THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0752",  # ARABIC LETTER BEH WITH THREE DOTS POINTING UPWARDS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0753",  # ARABIC LETTER BEH WITH THREE DOTS POINTING UPWARDS BELOW AND TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0754",  # ARABIC LETTER BEH WITH TWO DOTS BELOW AND DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0755",  # ARABIC LETTER BEH WITH INVERTED SMALL V BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0756",  # ARABIC LETTER BEH WITH SMALL V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0757",  # ARABIC LETTER HAH WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0758",  # ARABIC LETTER HAH WITH THREE DOTS POINTING UPWARDS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0759",  # ARABIC LETTER DAL WITH TWO DOTS VERTICALLY BELOW AND SMALL TAH;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "075A",  # ARABIC LETTER DAL WITH INVERTED SMALL V BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "075B",  # ARABIC LETTER REH WITH STROKE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "075C",  # ARABIC LETTER SEEN WITH FOUR DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "075D",  # ARABIC LETTER AIN WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "075E",  # ARABIC LETTER AIN WITH THREE DOTS POINTING DOWNWARDS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "075F",  # ARABIC LETTER AIN WITH TWO DOTS VERTICALLY ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0760",  # ARABIC LETTER FEH WITH TWO DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0761",  # ARABIC LETTER FEH WITH THREE DOTS POINTING UPWARDS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0762",  # ARABIC LETTER KEHEH WITH DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0763",  # ARABIC LETTER KEHEH WITH THREE DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0764",  # ARABIC LETTER KEHEH WITH THREE DOTS POINTING UPWARDS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0765",  # ARABIC LETTER MEEM WITH DOT ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0766",  # ARABIC LETTER MEEM WITH DOT BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0767",  # ARABIC LETTER NOON WITH TWO DOTS BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0768",  # ARABIC LETTER NOON WITH SMALL TAH;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0769",  # ARABIC LETTER NOON WITH SMALL V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "076A",  # ARABIC LETTER LAM WITH BAR;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "076B",  # ARABIC LETTER REH WITH TWO DOTS VERTICALLY ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "076C",  # ARABIC LETTER REH WITH HAMZA ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "076D",  # ARABIC LETTER SEEN WITH TWO DOTS VERTICALLY ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "076E",  # ARABIC LETTER HAH WITH SMALL ARABIC LETTER TAH BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "076F",  # ARABIC LETTER HAH WITH SMALL ARABIC LETTER TAH AND TWO DOTS;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0770",  # ARABIC LETTER SEEN WITH SMALL ARABIC LETTER TAH AND TWO DOTS;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0771",  # ARABIC LETTER REH WITH SMALL ARABIC LETTER TAH AND TWO DOTS;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0772",  # ARABIC LETTER HAH WITH SMALL ARABIC LETTER TAH ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0773",  # ARABIC LETTER ALEF WITH EXTENDED ARABIC-INDIC DIGIT TWO ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0774",  # ARABIC LETTER ALEF WITH EXTENDED ARABIC-INDIC DIGIT THREE ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0775",  # ARABIC LETTER FARSI YEH WITH EXTENDED ARABIC-INDIC DIGIT TWO ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0776",  # ARABIC LETTER FARSI YEH WITH EXTENDED ARABIC-INDIC DIGIT THREE ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0777",  # ARABIC LETTER FARSI YEH WITH EXTENDED ARABIC-INDIC DIGIT FOUR BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0778",  # ARABIC LETTER WAW WITH EXTENDED ARABIC-INDIC DIGIT TWO ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "0779",  # ARABIC LETTER WAW WITH EXTENDED ARABIC-INDIC DIGIT THREE ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "077A",  # ARABIC LETTER YEH BARREE WITH EXTENDED ARABIC-INDIC DIGIT TWO ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "077B",  # ARABIC LETTER YEH BARREE WITH EXTENDED ARABIC-INDIC DIGIT THREE ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "077C",  # ARABIC LETTER HAH WITH EXTENDED ARABIC-INDIC DIGIT FOUR BELOW;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "077D",  # ARABIC LETTER SEEN WITH EXTENDED ARABIC-INDIC DIGIT FOUR ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "077E",  # ARABIC LETTER SEEN WITH INVERTED V;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "077F",  # ARABIC LETTER KAF WITH TWO DOTS ABOVE;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "206C",  # INHIBIT ARABIC FORM SHAPING;Cf;0;BN;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "206D",  # ACTIVATE ARABIC FORM SHAPING;Cf;0;BN;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB50",  # ARABIC LETTER ALEF WASLA ISOLATED FORM;Lo;0;AL;<isolated> 0671;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB51",  # ARABIC LETTER ALEF WASLA FINAL FORM;Lo;0;AL;<final> 0671;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB52",  # ARABIC LETTER BEEH ISOLATED FORM;Lo;0;AL;<isolated> 067B;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB53",  # ARABIC LETTER BEEH FINAL FORM;Lo;0;AL;<final> 067B;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB54",  # ARABIC LETTER BEEH INITIAL FORM;Lo;0;AL;<initial> 067B;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB55",  # ARABIC LETTER BEEH MEDIAL FORM;Lo;0;AL;<medial> 067B;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB56",  # ARABIC LETTER PEH ISOLATED FORM;Lo;0;AL;<isolated> 067E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB57",  # ARABIC LETTER PEH FINAL FORM;Lo;0;AL;<final> 067E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB58",  # ARABIC LETTER PEH INITIAL FORM;Lo;0;AL;<initial> 067E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB59",  # ARABIC LETTER PEH MEDIAL FORM;Lo;0;AL;<medial> 067E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB5A",  # ARABIC LETTER BEHEH ISOLATED FORM;Lo;0;AL;<isolated> 0680;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB5B",  # ARABIC LETTER BEHEH FINAL FORM;Lo;0;AL;<final> 0680;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB5C",  # ARABIC LETTER BEHEH INITIAL FORM;Lo;0;AL;<initial> 0680;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB5D",  # ARABIC LETTER BEHEH MEDIAL FORM;Lo;0;AL;<medial> 0680;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB5E",  # ARABIC LETTER TTEHEH ISOLATED FORM;Lo;0;AL;<isolated> 067A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB5F",  # ARABIC LETTER TTEHEH FINAL FORM;Lo;0;AL;<final> 067A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB60",  # ARABIC LETTER TTEHEH INITIAL FORM;Lo;0;AL;<initial> 067A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB61",  # ARABIC LETTER TTEHEH MEDIAL FORM;Lo;0;AL;<medial> 067A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB62",  # ARABIC LETTER TEHEH ISOLATED FORM;Lo;0;AL;<isolated> 067F;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB63",  # ARABIC LETTER TEHEH FINAL FORM;Lo;0;AL;<final> 067F;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB64",  # ARABIC LETTER TEHEH INITIAL FORM;Lo;0;AL;<initial> 067F;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB65",  # ARABIC LETTER TEHEH MEDIAL FORM;Lo;0;AL;<medial> 067F;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB66",  # ARABIC LETTER TTEH ISOLATED FORM;Lo;0;AL;<isolated> 0679;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB67",  # ARABIC LETTER TTEH FINAL FORM;Lo;0;AL;<final> 0679;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB68",  # ARABIC LETTER TTEH INITIAL FORM;Lo;0;AL;<initial> 0679;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB69",  # ARABIC LETTER TTEH MEDIAL FORM;Lo;0;AL;<medial> 0679;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB6A",  # ARABIC LETTER VEH ISOLATED FORM;Lo;0;AL;<isolated> 06A4;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB6B",  # ARABIC LETTER VEH FINAL FORM;Lo;0;AL;<final> 06A4;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB6C",  # ARABIC LETTER VEH INITIAL FORM;Lo;0;AL;<initial> 06A4;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB6D",  # ARABIC LETTER VEH MEDIAL FORM;Lo;0;AL;<medial> 06A4;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB6E",  # ARABIC LETTER PEHEH ISOLATED FORM;Lo;0;AL;<isolated> 06A6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB6F",  # ARABIC LETTER PEHEH FINAL FORM;Lo;0;AL;<final> 06A6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB70",  # ARABIC LETTER PEHEH INITIAL FORM;Lo;0;AL;<initial> 06A6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB71",  # ARABIC LETTER PEHEH MEDIAL FORM;Lo;0;AL;<medial> 06A6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB72",  # ARABIC LETTER DYEH ISOLATED FORM;Lo;0;AL;<isolated> 0684;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB73",  # ARABIC LETTER DYEH FINAL FORM;Lo;0;AL;<final> 0684;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB74",  # ARABIC LETTER DYEH INITIAL FORM;Lo;0;AL;<initial> 0684;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB75",  # ARABIC LETTER DYEH MEDIAL FORM;Lo;0;AL;<medial> 0684;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB76",  # ARABIC LETTER NYEH ISOLATED FORM;Lo;0;AL;<isolated> 0683;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB77",  # ARABIC LETTER NYEH FINAL FORM;Lo;0;AL;<final> 0683;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB78",  # ARABIC LETTER NYEH INITIAL FORM;Lo;0;AL;<initial> 0683;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB79",  # ARABIC LETTER NYEH MEDIAL FORM;Lo;0;AL;<medial> 0683;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB7A",  # ARABIC LETTER TCHEH ISOLATED FORM;Lo;0;AL;<isolated> 0686;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB7B",  # ARABIC LETTER TCHEH FINAL FORM;Lo;0;AL;<final> 0686;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB7C",  # ARABIC LETTER TCHEH INITIAL FORM;Lo;0;AL;<initial> 0686;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB7D",  # ARABIC LETTER TCHEH MEDIAL FORM;Lo;0;AL;<medial> 0686;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB7E",  # ARABIC LETTER TCHEHEH ISOLATED FORM;Lo;0;AL;<isolated> 0687;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB7F",  # ARABIC LETTER TCHEHEH FINAL FORM;Lo;0;AL;<final> 0687;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB80",  # ARABIC LETTER TCHEHEH INITIAL FORM;Lo;0;AL;<initial> 0687;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB81",  # ARABIC LETTER TCHEHEH MEDIAL FORM;Lo;0;AL;<medial> 0687;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB82",  # ARABIC LETTER DDAHAL ISOLATED FORM;Lo;0;AL;<isolated> 068D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB83",  # ARABIC LETTER DDAHAL FINAL FORM;Lo;0;AL;<final> 068D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB84",  # ARABIC LETTER DAHAL ISOLATED FORM;Lo;0;AL;<isolated> 068C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB85",  # ARABIC LETTER DAHAL FINAL FORM;Lo;0;AL;<final> 068C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB86",  # ARABIC LETTER DUL ISOLATED FORM;Lo;0;AL;<isolated> 068E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB87",  # ARABIC LETTER DUL FINAL FORM;Lo;0;AL;<final> 068E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB88",  # ARABIC LETTER DDAL ISOLATED FORM;Lo;0;AL;<isolated> 0688;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB89",  # ARABIC LETTER DDAL FINAL FORM;Lo;0;AL;<final> 0688;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB8A",  # ARABIC LETTER JEH ISOLATED FORM;Lo;0;AL;<isolated> 0698;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB8B",  # ARABIC LETTER JEH FINAL FORM;Lo;0;AL;<final> 0698;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB8C",  # ARABIC LETTER RREH ISOLATED FORM;Lo;0;AL;<isolated> 0691;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB8D",  # ARABIC LETTER RREH FINAL FORM;Lo;0;AL;<final> 0691;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB8E",  # ARABIC LETTER KEHEH ISOLATED FORM;Lo;0;AL;<isolated> 06A9;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB8F",  # ARABIC LETTER KEHEH FINAL FORM;Lo;0;AL;<final> 06A9;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB90",  # ARABIC LETTER KEHEH INITIAL FORM;Lo;0;AL;<initial> 06A9;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB91",  # ARABIC LETTER KEHEH MEDIAL FORM;Lo;0;AL;<medial> 06A9;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB92",  # ARABIC LETTER GAF ISOLATED FORM;Lo;0;AL;<isolated> 06AF;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB93",  # ARABIC LETTER GAF FINAL FORM;Lo;0;AL;<final> 06AF;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB94",  # ARABIC LETTER GAF INITIAL FORM;Lo;0;AL;<initial> 06AF;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB95",  # ARABIC LETTER GAF MEDIAL FORM;Lo;0;AL;<medial> 06AF;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB96",  # ARABIC LETTER GUEH ISOLATED FORM;Lo;0;AL;<isolated> 06B3;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB97",  # ARABIC LETTER GUEH FINAL FORM;Lo;0;AL;<final> 06B3;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB98",  # ARABIC LETTER GUEH INITIAL FORM;Lo;0;AL;<initial> 06B3;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB99",  # ARABIC LETTER GUEH MEDIAL FORM;Lo;0;AL;<medial> 06B3;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB9A",  # ARABIC LETTER NGOEH ISOLATED FORM;Lo;0;AL;<isolated> 06B1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB9B",  # ARABIC LETTER NGOEH FINAL FORM;Lo;0;AL;<final> 06B1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB9C",  # ARABIC LETTER NGOEH INITIAL FORM;Lo;0;AL;<initial> 06B1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB9D",  # ARABIC LETTER NGOEH MEDIAL FORM;Lo;0;AL;<medial> 06B1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB9E",  # ARABIC LETTER NOON GHUNNA ISOLATED FORM;Lo;0;AL;<isolated> 06BA;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FB9F",  # ARABIC LETTER NOON GHUNNA FINAL FORM;Lo;0;AL;<final> 06BA;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA0",  # ARABIC LETTER RNOON ISOLATED FORM;Lo;0;AL;<isolated> 06BB;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA1",  # ARABIC LETTER RNOON FINAL FORM;Lo;0;AL;<final> 06BB;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA2",  # ARABIC LETTER RNOON INITIAL FORM;Lo;0;AL;<initial> 06BB;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA3",  # ARABIC LETTER RNOON MEDIAL FORM;Lo;0;AL;<medial> 06BB;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA4",  # ARABIC LETTER HEH WITH YEH ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 06C0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA5",  # ARABIC LETTER HEH WITH YEH ABOVE FINAL FORM;Lo;0;AL;<final> 06C0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA6",  # ARABIC LETTER HEH GOAL ISOLATED FORM;Lo;0;AL;<isolated> 06C1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA7",  # ARABIC LETTER HEH GOAL FINAL FORM;Lo;0;AL;<final> 06C1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA8",  # ARABIC LETTER HEH GOAL INITIAL FORM;Lo;0;AL;<initial> 06C1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBA9",  # ARABIC LETTER HEH GOAL MEDIAL FORM;Lo;0;AL;<medial> 06C1;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBAA",  # ARABIC LETTER HEH DOACHASHMEE ISOLATED FORM;Lo;0;AL;<isolated> 06BE;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBAB",  # ARABIC LETTER HEH DOACHASHMEE FINAL FORM;Lo;0;AL;<final> 06BE;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBAC",  # ARABIC LETTER HEH DOACHASHMEE INITIAL FORM;Lo;0;AL;<initial> 06BE;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBAD",  # ARABIC LETTER HEH DOACHASHMEE MEDIAL FORM;Lo;0;AL;<medial> 06BE;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBAE",  # ARABIC LETTER YEH BARREE ISOLATED FORM;Lo;0;AL;<isolated> 06D2;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBAF",  # ARABIC LETTER YEH BARREE FINAL FORM;Lo;0;AL;<final> 06D2;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBB0",  # ARABIC LETTER YEH BARREE WITH HAMZA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 06D3;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBB1",  # ARABIC LETTER YEH BARREE WITH HAMZA ABOVE FINAL FORM;Lo;0;AL;<final> 06D3;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD3",  # ARABIC LETTER NG ISOLATED FORM;Lo;0;AL;<isolated> 06AD;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD4",  # ARABIC LETTER NG FINAL FORM;Lo;0;AL;<final> 06AD;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD5",  # ARABIC LETTER NG INITIAL FORM;Lo;0;AL;<initial> 06AD;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD6",  # ARABIC LETTER NG MEDIAL FORM;Lo;0;AL;<medial> 06AD;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD7",  # ARABIC LETTER U ISOLATED FORM;Lo;0;AL;<isolated> 06C7;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD8",  # ARABIC LETTER U FINAL FORM;Lo;0;AL;<final> 06C7;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBD9",  # ARABIC LETTER OE ISOLATED FORM;Lo;0;AL;<isolated> 06C6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBDA",  # ARABIC LETTER OE FINAL FORM;Lo;0;AL;<final> 06C6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBDB",  # ARABIC LETTER YU ISOLATED FORM;Lo;0;AL;<isolated> 06C8;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBDC",  # ARABIC LETTER YU FINAL FORM;Lo;0;AL;<final> 06C8;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBDD",  # ARABIC LETTER U WITH HAMZA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0677;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBDE",  # ARABIC LETTER VE ISOLATED FORM;Lo;0;AL;<isolated> 06CB;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBDF",  # ARABIC LETTER VE FINAL FORM;Lo;0;AL;<final> 06CB;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE0",  # ARABIC LETTER KIRGHIZ OE ISOLATED FORM;Lo;0;AL;<isolated> 06C5;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE1",  # ARABIC LETTER KIRGHIZ OE FINAL FORM;Lo;0;AL;<final> 06C5;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE2",  # ARABIC LETTER KIRGHIZ YU ISOLATED FORM;Lo;0;AL;<isolated> 06C9;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE3",  # ARABIC LETTER KIRGHIZ YU FINAL FORM;Lo;0;AL;<final> 06C9;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE4",  # ARABIC LETTER E ISOLATED FORM;Lo;0;AL;<isolated> 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE5",  # ARABIC LETTER E FINAL FORM;Lo;0;AL;<final> 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE6",  # ARABIC LETTER E INITIAL FORM;Lo;0;AL;<initial> 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE7",  # ARABIC LETTER E MEDIAL FORM;Lo;0;AL;<medial> 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE8",  # ARABIC LETTER UIGHUR KAZAKH KIRGHIZ ALEF MAKSURA INITIAL FORM;Lo;0;AL;<initial> 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBE9",  # ARABIC LETTER UIGHUR KAZAKH KIRGHIZ ALEF MAKSURA MEDIAL FORM;Lo;0;AL;<medial> 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBEA",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0626 0627;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBEB",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH ALEF FINAL FORM;Lo;0;AL;<final> 0626 0627;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBEC",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH AE ISOLATED FORM;Lo;0;AL;<isolated> 0626 06D5;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBED",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH AE FINAL FORM;Lo;0;AL;<final> 0626 06D5;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBEE",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH WAW ISOLATED FORM;Lo;0;AL;<isolated> 0626 0648;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBEF",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH WAW FINAL FORM;Lo;0;AL;<final> 0626 0648;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF0",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH U ISOLATED FORM;Lo;0;AL;<isolated> 0626 06C7;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF1",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH U FINAL FORM;Lo;0;AL;<final> 0626 06C7;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF2",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH OE ISOLATED FORM;Lo;0;AL;<isolated> 0626 06C6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF3",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH OE FINAL FORM;Lo;0;AL;<final> 0626 06C6;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF4",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH YU ISOLATED FORM;Lo;0;AL;<isolated> 0626 06C8;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF5",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH YU FINAL FORM;Lo;0;AL;<final> 0626 06C8;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF6",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH E ISOLATED FORM;Lo;0;AL;<isolated> 0626 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF7",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH E FINAL FORM;Lo;0;AL;<final> 0626 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF8",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH E INITIAL FORM;Lo;0;AL;<initial> 0626 06D0;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBF9",  # ARABIC LIGATURE UIGHUR KIRGHIZ YEH WITH HAMZA ABOVE WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0626 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBFA",  # ARABIC LIGATURE UIGHUR KIRGHIZ YEH WITH HAMZA ABOVE WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0626 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBFB",  # ARABIC LIGATURE UIGHUR KIRGHIZ YEH WITH HAMZA ABOVE WITH ALEF MAKSURA INITIAL FORM;Lo;0;AL;<initial> 0626 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBFC",  # ARABIC LETTER FARSI YEH ISOLATED FORM;Lo;0;AL;<isolated> 06CC;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBFD",  # ARABIC LETTER FARSI YEH FINAL FORM;Lo;0;AL;<final> 06CC;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBFE",  # ARABIC LETTER FARSI YEH INITIAL FORM;Lo;0;AL;<initial> 06CC;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FBFF",  # ARABIC LETTER FARSI YEH MEDIAL FORM;Lo;0;AL;<medial> 06CC;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC00",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0626 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC01",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0626 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC02",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0626 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC03",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0626 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC04",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0626 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC05",  # ARABIC LIGATURE BEH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0628 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC06",  # ARABIC LIGATURE BEH WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0628 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC07",  # ARABIC LIGATURE BEH WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0628 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC08",  # ARABIC LIGATURE BEH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0628 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC09",  # ARABIC LIGATURE BEH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0628 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC0A",  # ARABIC LIGATURE BEH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0628 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC0B",  # ARABIC LIGATURE TEH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 062A 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC0C",  # ARABIC LIGATURE TEH WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 062A 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC0D",  # ARABIC LIGATURE TEH WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 062A 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC0E",  # ARABIC LIGATURE TEH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 062A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC0F",  # ARABIC LIGATURE TEH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 062A 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC10",  # ARABIC LIGATURE TEH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 062A 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC11",  # ARABIC LIGATURE THEH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 062B 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC12",  # ARABIC LIGATURE THEH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 062B 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC13",  # ARABIC LIGATURE THEH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 062B 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC14",  # ARABIC LIGATURE THEH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 062B 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC15",  # ARABIC LIGATURE JEEM WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 062C 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC16",  # ARABIC LIGATURE JEEM WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC17",  # ARABIC LIGATURE HAH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 062D 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC18",  # ARABIC LIGATURE HAH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC19",  # ARABIC LIGATURE KHAH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 062E 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC1A",  # ARABIC LIGATURE KHAH WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 062E 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC1B",  # ARABIC LIGATURE KHAH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC1C",  # ARABIC LIGATURE SEEN WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0633 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC1D",  # ARABIC LIGATURE SEEN WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0633 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC1E",  # ARABIC LIGATURE SEEN WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0633 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC1F",  # ARABIC LIGATURE SEEN WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0633 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC20",  # ARABIC LIGATURE SAD WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0635 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC21",  # ARABIC LIGATURE SAD WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0635 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC22",  # ARABIC LIGATURE DAD WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0636 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC23",  # ARABIC LIGATURE DAD WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0636 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC24",  # ARABIC LIGATURE DAD WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0636 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC25",  # ARABIC LIGATURE DAD WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0636 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC26",  # ARABIC LIGATURE TAH WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0637 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC27",  # ARABIC LIGATURE TAH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0637 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC28",  # ARABIC LIGATURE ZAH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0638 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC29",  # ARABIC LIGATURE AIN WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0639 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC2A",  # ARABIC LIGATURE AIN WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0639 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC2B",  # ARABIC LIGATURE GHAIN WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 063A 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC2C",  # ARABIC LIGATURE GHAIN WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 063A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC2D",  # ARABIC LIGATURE FEH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0641 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC2E",  # ARABIC LIGATURE FEH WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0641 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC2F",  # ARABIC LIGATURE FEH WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0641 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC30",  # ARABIC LIGATURE FEH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0641 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC31",  # ARABIC LIGATURE FEH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0641 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC32",  # ARABIC LIGATURE FEH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0641 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC33",  # ARABIC LIGATURE QAF WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0642 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC34",  # ARABIC LIGATURE QAF WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0642 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC35",  # ARABIC LIGATURE QAF WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0642 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC36",  # ARABIC LIGATURE QAF WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0642 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC37",  # ARABIC LIGATURE KAF WITH ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0643 0627;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC38",  # ARABIC LIGATURE KAF WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0643 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC39",  # ARABIC LIGATURE KAF WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0643 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC3A",  # ARABIC LIGATURE KAF WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0643 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC3B",  # ARABIC LIGATURE KAF WITH LAM ISOLATED FORM;Lo;0;AL;<isolated> 0643 0644;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC3C",  # ARABIC LIGATURE KAF WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0643 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC3D",  # ARABIC LIGATURE KAF WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0643 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC3E",  # ARABIC LIGATURE KAF WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0643 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC3F",  # ARABIC LIGATURE LAM WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0644 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC40",  # ARABIC LIGATURE LAM WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0644 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC41",  # ARABIC LIGATURE LAM WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0644 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC42",  # ARABIC LIGATURE LAM WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0644 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC43",  # ARABIC LIGATURE LAM WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0644 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC44",  # ARABIC LIGATURE LAM WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0644 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC45",  # ARABIC LIGATURE MEEM WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0645 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC46",  # ARABIC LIGATURE MEEM WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC47",  # ARABIC LIGATURE MEEM WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0645 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC48",  # ARABIC LIGATURE MEEM WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC49",  # ARABIC LIGATURE MEEM WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC4A",  # ARABIC LIGATURE MEEM WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC4B",  # ARABIC LIGATURE NOON WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0646 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC4C",  # ARABIC LIGATURE NOON WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0646 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC4D",  # ARABIC LIGATURE NOON WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0646 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC4E",  # ARABIC LIGATURE NOON WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0646 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC4F",  # ARABIC LIGATURE NOON WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0646 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC50",  # ARABIC LIGATURE NOON WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0646 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC51",  # ARABIC LIGATURE HEH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0647 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC52",  # ARABIC LIGATURE HEH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0647 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC53",  # ARABIC LIGATURE HEH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0647 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC54",  # ARABIC LIGATURE HEH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0647 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC55",  # ARABIC LIGATURE YEH WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 064A 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC56",  # ARABIC LIGATURE YEH WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 064A 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC57",  # ARABIC LIGATURE YEH WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 064A 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC58",  # ARABIC LIGATURE YEH WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 064A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC59",  # ARABIC LIGATURE YEH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 064A 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC5A",  # ARABIC LIGATURE YEH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 064A 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC5B",  # ARABIC LIGATURE THAL WITH SUPERSCRIPT ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0630 0670;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC5C",  # ARABIC LIGATURE REH WITH SUPERSCRIPT ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0631 0670;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC5D",  # ARABIC LIGATURE ALEF MAKSURA WITH SUPERSCRIPT ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0649 0670;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC5E",  # ARABIC LIGATURE SHADDA WITH DAMMATAN ISOLATED FORM;Lo;0;AL;<isolated> 0020 064C 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC5F",  # ARABIC LIGATURE SHADDA WITH KASRATAN ISOLATED FORM;Lo;0;AL;<isolated> 0020 064D 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC60",  # ARABIC LIGATURE SHADDA WITH FATHA ISOLATED FORM;Lo;0;AL;<isolated> 0020 064E 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC61",  # ARABIC LIGATURE SHADDA WITH DAMMA ISOLATED FORM;Lo;0;AL;<isolated> 0020 064F 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC62",  # ARABIC LIGATURE SHADDA WITH KASRA ISOLATED FORM;Lo;0;AL;<isolated> 0020 0650 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC63",  # ARABIC LIGATURE SHADDA WITH SUPERSCRIPT ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0020 0651 0670;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC64",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH REH FINAL FORM;Lo;0;AL;<final> 0626 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC65",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH ZAIN FINAL FORM;Lo;0;AL;<final> 0626 0632;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC66",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH MEEM FINAL FORM;Lo;0;AL;<final> 0626 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC67",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH NOON FINAL FORM;Lo;0;AL;<final> 0626 0646;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC68",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0626 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC69",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH YEH FINAL FORM;Lo;0;AL;<final> 0626 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC6A",  # ARABIC LIGATURE BEH WITH REH FINAL FORM;Lo;0;AL;<final> 0628 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC6B",  # ARABIC LIGATURE BEH WITH ZAIN FINAL FORM;Lo;0;AL;<final> 0628 0632;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC6C",  # ARABIC LIGATURE BEH WITH MEEM FINAL FORM;Lo;0;AL;<final> 0628 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC6D",  # ARABIC LIGATURE BEH WITH NOON FINAL FORM;Lo;0;AL;<final> 0628 0646;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC6E",  # ARABIC LIGATURE BEH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0628 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC6F",  # ARABIC LIGATURE BEH WITH YEH FINAL FORM;Lo;0;AL;<final> 0628 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC70",  # ARABIC LIGATURE TEH WITH REH FINAL FORM;Lo;0;AL;<final> 062A 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC71",  # ARABIC LIGATURE TEH WITH ZAIN FINAL FORM;Lo;0;AL;<final> 062A 0632;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC72",  # ARABIC LIGATURE TEH WITH MEEM FINAL FORM;Lo;0;AL;<final> 062A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC73",  # ARABIC LIGATURE TEH WITH NOON FINAL FORM;Lo;0;AL;<final> 062A 0646;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC74",  # ARABIC LIGATURE TEH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062A 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC75",  # ARABIC LIGATURE TEH WITH YEH FINAL FORM;Lo;0;AL;<final> 062A 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC76",  # ARABIC LIGATURE THEH WITH REH FINAL FORM;Lo;0;AL;<final> 062B 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC77",  # ARABIC LIGATURE THEH WITH ZAIN FINAL FORM;Lo;0;AL;<final> 062B 0632;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC78",  # ARABIC LIGATURE THEH WITH MEEM FINAL FORM;Lo;0;AL;<final> 062B 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC79",  # ARABIC LIGATURE THEH WITH NOON FINAL FORM;Lo;0;AL;<final> 062B 0646;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC7A",  # ARABIC LIGATURE THEH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062B 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC7B",  # ARABIC LIGATURE THEH WITH YEH FINAL FORM;Lo;0;AL;<final> 062B 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC7C",  # ARABIC LIGATURE FEH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0641 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC7D",  # ARABIC LIGATURE FEH WITH YEH FINAL FORM;Lo;0;AL;<final> 0641 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC7E",  # ARABIC LIGATURE QAF WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0642 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC7F",  # ARABIC LIGATURE QAF WITH YEH FINAL FORM;Lo;0;AL;<final> 0642 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC80",  # ARABIC LIGATURE KAF WITH ALEF FINAL FORM;Lo;0;AL;<final> 0643 0627;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC81",  # ARABIC LIGATURE KAF WITH LAM FINAL FORM;Lo;0;AL;<final> 0643 0644;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC82",  # ARABIC LIGATURE KAF WITH MEEM FINAL FORM;Lo;0;AL;<final> 0643 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC83",  # ARABIC LIGATURE KAF WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0643 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC84",  # ARABIC LIGATURE KAF WITH YEH FINAL FORM;Lo;0;AL;<final> 0643 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC85",  # ARABIC LIGATURE LAM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0644 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC86",  # ARABIC LIGATURE LAM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0644 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC87",  # ARABIC LIGATURE LAM WITH YEH FINAL FORM;Lo;0;AL;<final> 0644 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC88",  # ARABIC LIGATURE MEEM WITH ALEF FINAL FORM;Lo;0;AL;<final> 0645 0627;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC89",  # ARABIC LIGATURE MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC8A",  # ARABIC LIGATURE NOON WITH REH FINAL FORM;Lo;0;AL;<final> 0646 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC8B",  # ARABIC LIGATURE NOON WITH ZAIN FINAL FORM;Lo;0;AL;<final> 0646 0632;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC8C",  # ARABIC LIGATURE NOON WITH MEEM FINAL FORM;Lo;0;AL;<final> 0646 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC8D",  # ARABIC LIGATURE NOON WITH NOON FINAL FORM;Lo;0;AL;<final> 0646 0646;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC8E",  # ARABIC LIGATURE NOON WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0646 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC8F",  # ARABIC LIGATURE NOON WITH YEH FINAL FORM;Lo;0;AL;<final> 0646 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC90",  # ARABIC LIGATURE ALEF MAKSURA WITH SUPERSCRIPT ALEF FINAL FORM;Lo;0;AL;<final> 0649 0670;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC91",  # ARABIC LIGATURE YEH WITH REH FINAL FORM;Lo;0;AL;<final> 064A 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC92",  # ARABIC LIGATURE YEH WITH ZAIN FINAL FORM;Lo;0;AL;<final> 064A 0632;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC93",  # ARABIC LIGATURE YEH WITH MEEM FINAL FORM;Lo;0;AL;<final> 064A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC94",  # ARABIC LIGATURE YEH WITH NOON FINAL FORM;Lo;0;AL;<final> 064A 0646;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC95",  # ARABIC LIGATURE YEH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 064A 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC96",  # ARABIC LIGATURE YEH WITH YEH FINAL FORM;Lo;0;AL;<final> 064A 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC97",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0626 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC98",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0626 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC99",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0626 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC9A",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0626 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC9B",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH HEH INITIAL FORM;Lo;0;AL;<initial> 0626 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC9C",  # ARABIC LIGATURE BEH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0628 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC9D",  # ARABIC LIGATURE BEH WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0628 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC9E",  # ARABIC LIGATURE BEH WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0628 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FC9F",  # ARABIC LIGATURE BEH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0628 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA0",  # ARABIC LIGATURE BEH WITH HEH INITIAL FORM;Lo;0;AL;<initial> 0628 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA1",  # ARABIC LIGATURE TEH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 062A 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA2",  # ARABIC LIGATURE TEH WITH HAH INITIAL FORM;Lo;0;AL;<initial> 062A 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA3",  # ARABIC LIGATURE TEH WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 062A 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA4",  # ARABIC LIGATURE TEH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA5",  # ARABIC LIGATURE TEH WITH HEH INITIAL FORM;Lo;0;AL;<initial> 062A 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA6",  # ARABIC LIGATURE THEH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062B 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA7",  # ARABIC LIGATURE JEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 062C 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA8",  # ARABIC LIGATURE JEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCA9",  # ARABIC LIGATURE HAH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 062D 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCAA",  # ARABIC LIGATURE HAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCAB",  # ARABIC LIGATURE KHAH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 062E 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCAC",  # ARABIC LIGATURE KHAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCAD",  # ARABIC LIGATURE SEEN WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0633 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCAE",  # ARABIC LIGATURE SEEN WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0633 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCAF",  # ARABIC LIGATURE SEEN WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0633 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB0",  # ARABIC LIGATURE SEEN WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0633 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB1",  # ARABIC LIGATURE SAD WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0635 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB2",  # ARABIC LIGATURE SAD WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0635 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB3",  # ARABIC LIGATURE SAD WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0635 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB4",  # ARABIC LIGATURE DAD WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0636 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB5",  # ARABIC LIGATURE DAD WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0636 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB6",  # ARABIC LIGATURE DAD WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0636 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB7",  # ARABIC LIGATURE DAD WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0636 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB8",  # ARABIC LIGATURE TAH WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0637 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCB9",  # ARABIC LIGATURE ZAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0638 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCBA",  # ARABIC LIGATURE AIN WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0639 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCBB",  # ARABIC LIGATURE AIN WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0639 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCBC",  # ARABIC LIGATURE GHAIN WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 063A 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCBD",  # ARABIC LIGATURE GHAIN WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 063A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCBE",  # ARABIC LIGATURE FEH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0641 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCBF",  # ARABIC LIGATURE FEH WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0641 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC0",  # ARABIC LIGATURE FEH WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0641 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC1",  # ARABIC LIGATURE FEH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0641 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC2",  # ARABIC LIGATURE QAF WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0642 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC3",  # ARABIC LIGATURE QAF WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0642 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC4",  # ARABIC LIGATURE KAF WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0643 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC5",  # ARABIC LIGATURE KAF WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0643 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC6",  # ARABIC LIGATURE KAF WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0643 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC7",  # ARABIC LIGATURE KAF WITH LAM INITIAL FORM;Lo;0;AL;<initial> 0643 0644;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC8",  # ARABIC LIGATURE KAF WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0643 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCC9",  # ARABIC LIGATURE LAM WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0644 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCCA",  # ARABIC LIGATURE LAM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0644 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCCB",  # ARABIC LIGATURE LAM WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0644 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCCC",  # ARABIC LIGATURE LAM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0644 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCCD",  # ARABIC LIGATURE LAM WITH HEH INITIAL FORM;Lo;0;AL;<initial> 0644 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCCE",  # ARABIC LIGATURE MEEM WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0645 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCCF",  # ARABIC LIGATURE MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD0",  # ARABIC LIGATURE MEEM WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0645 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD1",  # ARABIC LIGATURE MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD2",  # ARABIC LIGATURE NOON WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0646 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD3",  # ARABIC LIGATURE NOON WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0646 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD4",  # ARABIC LIGATURE NOON WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0646 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD5",  # ARABIC LIGATURE NOON WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0646 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD6",  # ARABIC LIGATURE NOON WITH HEH INITIAL FORM;Lo;0;AL;<initial> 0646 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD7",  # ARABIC LIGATURE HEH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0647 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD8",  # ARABIC LIGATURE HEH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0647 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCD9",  # ARABIC LIGATURE HEH WITH SUPERSCRIPT ALEF INITIAL FORM;Lo;0;AL;<initial> 0647 0670;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCDA",  # ARABIC LIGATURE YEH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 064A 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCDB",  # ARABIC LIGATURE YEH WITH HAH INITIAL FORM;Lo;0;AL;<initial> 064A 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCDC",  # ARABIC LIGATURE YEH WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 064A 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCDD",  # ARABIC LIGATURE YEH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 064A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCDE",  # ARABIC LIGATURE YEH WITH HEH INITIAL FORM;Lo;0;AL;<initial> 064A 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCDF",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0626 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE0",  # ARABIC LIGATURE YEH WITH HAMZA ABOVE WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 0626 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE1",  # ARABIC LIGATURE BEH WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0628 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE2",  # ARABIC LIGATURE BEH WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 0628 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE3",  # ARABIC LIGATURE TEH WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 062A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE4",  # ARABIC LIGATURE TEH WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 062A 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE5",  # ARABIC LIGATURE THEH WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 062B 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE6",  # ARABIC LIGATURE THEH WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 062B 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE7",  # ARABIC LIGATURE SEEN WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0633 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE8",  # ARABIC LIGATURE SEEN WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 0633 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCE9",  # ARABIC LIGATURE SHEEN WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0634 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCEA",  # ARABIC LIGATURE SHEEN WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 0634 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCEB",  # ARABIC LIGATURE KAF WITH LAM MEDIAL FORM;Lo;0;AL;<medial> 0643 0644;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCEC",  # ARABIC LIGATURE KAF WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0643 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCED",  # ARABIC LIGATURE LAM WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0644 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCEE",  # ARABIC LIGATURE NOON WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0646 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCEF",  # ARABIC LIGATURE NOON WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 0646 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF0",  # ARABIC LIGATURE YEH WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 064A 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF1",  # ARABIC LIGATURE YEH WITH HEH MEDIAL FORM;Lo;0;AL;<medial> 064A 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF2",  # ARABIC LIGATURE SHADDA WITH FATHA MEDIAL FORM;Lo;0;AL;<medial> 0640 064E 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF3",  # ARABIC LIGATURE SHADDA WITH DAMMA MEDIAL FORM;Lo;0;AL;<medial> 0640 064F 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF4",  # ARABIC LIGATURE SHADDA WITH KASRA MEDIAL FORM;Lo;0;AL;<medial> 0640 0650 0651;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF5",  # ARABIC LIGATURE TAH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0637 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF6",  # ARABIC LIGATURE TAH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0637 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF7",  # ARABIC LIGATURE AIN WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0639 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF8",  # ARABIC LIGATURE AIN WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0639 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCF9",  # ARABIC LIGATURE GHAIN WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 063A 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCFA",  # ARABIC LIGATURE GHAIN WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 063A 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCFB",  # ARABIC LIGATURE SEEN WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0633 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCFC",  # ARABIC LIGATURE SEEN WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0633 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCFD",  # ARABIC LIGATURE SHEEN WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0634 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCFE",  # ARABIC LIGATURE SHEEN WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0634 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FCFF",  # ARABIC LIGATURE HAH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 062D 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD00",  # ARABIC LIGATURE HAH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD01",  # ARABIC LIGATURE JEEM WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 062C 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD02",  # ARABIC LIGATURE JEEM WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD03",  # ARABIC LIGATURE KHAH WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 062E 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD04",  # ARABIC LIGATURE KHAH WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 062E 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD05",  # ARABIC LIGATURE SAD WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0635 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD06",  # ARABIC LIGATURE SAD WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0635 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD07",  # ARABIC LIGATURE DAD WITH ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0636 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD08",  # ARABIC LIGATURE DAD WITH YEH ISOLATED FORM;Lo;0;AL;<isolated> 0636 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD09",  # ARABIC LIGATURE SHEEN WITH JEEM ISOLATED FORM;Lo;0;AL;<isolated> 0634 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD0A",  # ARABIC LIGATURE SHEEN WITH HAH ISOLATED FORM;Lo;0;AL;<isolated> 0634 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD0B",  # ARABIC LIGATURE SHEEN WITH KHAH ISOLATED FORM;Lo;0;AL;<isolated> 0634 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD0C",  # ARABIC LIGATURE SHEEN WITH MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0634 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD0D",  # ARABIC LIGATURE SHEEN WITH REH ISOLATED FORM;Lo;0;AL;<isolated> 0634 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD0E",  # ARABIC LIGATURE SEEN WITH REH ISOLATED FORM;Lo;0;AL;<isolated> 0633 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD0F",  # ARABIC LIGATURE SAD WITH REH ISOLATED FORM;Lo;0;AL;<isolated> 0635 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD10",  # ARABIC LIGATURE DAD WITH REH ISOLATED FORM;Lo;0;AL;<isolated> 0636 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD11",  # ARABIC LIGATURE TAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0637 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD12",  # ARABIC LIGATURE TAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0637 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD13",  # ARABIC LIGATURE AIN WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0639 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD14",  # ARABIC LIGATURE AIN WITH YEH FINAL FORM;Lo;0;AL;<final> 0639 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD15",  # ARABIC LIGATURE GHAIN WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 063A 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD16",  # ARABIC LIGATURE GHAIN WITH YEH FINAL FORM;Lo;0;AL;<final> 063A 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD17",  # ARABIC LIGATURE SEEN WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0633 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD18",  # ARABIC LIGATURE SEEN WITH YEH FINAL FORM;Lo;0;AL;<final> 0633 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD19",  # ARABIC LIGATURE SHEEN WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0634 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD1A",  # ARABIC LIGATURE SHEEN WITH YEH FINAL FORM;Lo;0;AL;<final> 0634 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD1B",  # ARABIC LIGATURE HAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062D 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD1C",  # ARABIC LIGATURE HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD1D",  # ARABIC LIGATURE JEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062C 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD1E",  # ARABIC LIGATURE JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD1F",  # ARABIC LIGATURE KHAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062E 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD20",  # ARABIC LIGATURE KHAH WITH YEH FINAL FORM;Lo;0;AL;<final> 062E 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD21",  # ARABIC LIGATURE SAD WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0635 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD22",  # ARABIC LIGATURE SAD WITH YEH FINAL FORM;Lo;0;AL;<final> 0635 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD23",  # ARABIC LIGATURE DAD WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0636 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD24",  # ARABIC LIGATURE DAD WITH YEH FINAL FORM;Lo;0;AL;<final> 0636 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD25",  # ARABIC LIGATURE SHEEN WITH JEEM FINAL FORM;Lo;0;AL;<final> 0634 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD26",  # ARABIC LIGATURE SHEEN WITH HAH FINAL FORM;Lo;0;AL;<final> 0634 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD27",  # ARABIC LIGATURE SHEEN WITH KHAH FINAL FORM;Lo;0;AL;<final> 0634 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD28",  # ARABIC LIGATURE SHEEN WITH MEEM FINAL FORM;Lo;0;AL;<final> 0634 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD29",  # ARABIC LIGATURE SHEEN WITH REH FINAL FORM;Lo;0;AL;<final> 0634 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD2A",  # ARABIC LIGATURE SEEN WITH REH FINAL FORM;Lo;0;AL;<final> 0633 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD2B",  # ARABIC LIGATURE SAD WITH REH FINAL FORM;Lo;0;AL;<final> 0635 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD2C",  # ARABIC LIGATURE DAD WITH REH FINAL FORM;Lo;0;AL;<final> 0636 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD2D",  # ARABIC LIGATURE SHEEN WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0634 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD2E",  # ARABIC LIGATURE SHEEN WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0634 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD2F",  # ARABIC LIGATURE SHEEN WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0634 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD30",  # ARABIC LIGATURE SHEEN WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0634 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD31",  # ARABIC LIGATURE SEEN WITH HEH INITIAL FORM;Lo;0;AL;<initial> 0633 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD32",  # ARABIC LIGATURE SHEEN WITH HEH INITIAL FORM;Lo;0;AL;<initial> 0634 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD33",  # ARABIC LIGATURE TAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0637 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD34",  # ARABIC LIGATURE SEEN WITH JEEM MEDIAL FORM;Lo;0;AL;<medial> 0633 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD35",  # ARABIC LIGATURE SEEN WITH HAH MEDIAL FORM;Lo;0;AL;<medial> 0633 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD36",  # ARABIC LIGATURE SEEN WITH KHAH MEDIAL FORM;Lo;0;AL;<medial> 0633 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD37",  # ARABIC LIGATURE SHEEN WITH JEEM MEDIAL FORM;Lo;0;AL;<medial> 0634 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD38",  # ARABIC LIGATURE SHEEN WITH HAH MEDIAL FORM;Lo;0;AL;<medial> 0634 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD39",  # ARABIC LIGATURE SHEEN WITH KHAH MEDIAL FORM;Lo;0;AL;<medial> 0634 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD3A",  # ARABIC LIGATURE TAH WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0637 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD3B",  # ARABIC LIGATURE ZAH WITH MEEM MEDIAL FORM;Lo;0;AL;<medial> 0638 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD3C",  # ARABIC LIGATURE ALEF WITH FATHATAN FINAL FORM;Lo;0;AL;<final> 0627 064B;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD3D",  # ARABIC LIGATURE ALEF WITH FATHATAN ISOLATED FORM;Lo;0;AL;<isolated> 0627 064B;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD50",  # ARABIC LIGATURE TEH WITH JEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062A 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD51",  # ARABIC LIGATURE TEH WITH HAH WITH JEEM FINAL FORM;Lo;0;AL;<final> 062A 062D 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD52",  # ARABIC LIGATURE TEH WITH HAH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 062A 062D 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD53",  # ARABIC LIGATURE TEH WITH HAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062A 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD54",  # ARABIC LIGATURE TEH WITH KHAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 062A 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD55",  # ARABIC LIGATURE TEH WITH MEEM WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 062A 0645 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD56",  # ARABIC LIGATURE TEH WITH MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 062A 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD57",  # ARABIC LIGATURE TEH WITH MEEM WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 062A 0645 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD58",  # ARABIC LIGATURE JEEM WITH MEEM WITH HAH FINAL FORM;Lo;0;AL;<final> 062C 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD59",  # ARABIC LIGATURE JEEM WITH MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 062C 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD5A",  # ARABIC LIGATURE HAH WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 062D 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD5B",  # ARABIC LIGATURE HAH WITH MEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062D 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD5C",  # ARABIC LIGATURE SEEN WITH HAH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0633 062D 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD5D",  # ARABIC LIGATURE SEEN WITH JEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0633 062C 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD5E",  # ARABIC LIGATURE SEEN WITH JEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0633 062C 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD5F",  # ARABIC LIGATURE SEEN WITH MEEM WITH HAH FINAL FORM;Lo;0;AL;<final> 0633 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD60",  # ARABIC LIGATURE SEEN WITH MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0633 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD61",  # ARABIC LIGATURE SEEN WITH MEEM WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0633 0645 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD62",  # ARABIC LIGATURE SEEN WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0633 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD63",  # ARABIC LIGATURE SEEN WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0633 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD64",  # ARABIC LIGATURE SAD WITH HAH WITH HAH FINAL FORM;Lo;0;AL;<final> 0635 062D 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD65",  # ARABIC LIGATURE SAD WITH HAH WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0635 062D 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD66",  # ARABIC LIGATURE SAD WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0635 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD67",  # ARABIC LIGATURE SHEEN WITH HAH WITH MEEM FINAL FORM;Lo;0;AL;<final> 0634 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD68",  # ARABIC LIGATURE SHEEN WITH HAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0634 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD69",  # ARABIC LIGATURE SHEEN WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0634 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD6A",  # ARABIC LIGATURE SHEEN WITH MEEM WITH KHAH FINAL FORM;Lo;0;AL;<final> 0634 0645 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD6B",  # ARABIC LIGATURE SHEEN WITH MEEM WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0634 0645 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD6C",  # ARABIC LIGATURE SHEEN WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0634 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD6D",  # ARABIC LIGATURE SHEEN WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0634 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD6E",  # ARABIC LIGATURE DAD WITH HAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0636 062D 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD6F",  # ARABIC LIGATURE DAD WITH KHAH WITH MEEM FINAL FORM;Lo;0;AL;<final> 0636 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD70",  # ARABIC LIGATURE DAD WITH KHAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0636 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD71",  # ARABIC LIGATURE TAH WITH MEEM WITH HAH FINAL FORM;Lo;0;AL;<final> 0637 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD72",  # ARABIC LIGATURE TAH WITH MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0637 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD73",  # ARABIC LIGATURE TAH WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0637 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD74",  # ARABIC LIGATURE TAH WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0637 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD75",  # ARABIC LIGATURE AIN WITH JEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0639 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD76",  # ARABIC LIGATURE AIN WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0639 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD77",  # ARABIC LIGATURE AIN WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0639 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD78",  # ARABIC LIGATURE AIN WITH MEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0639 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD79",  # ARABIC LIGATURE GHAIN WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 063A 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD7A",  # ARABIC LIGATURE GHAIN WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 063A 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD7B",  # ARABIC LIGATURE GHAIN WITH MEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 063A 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD7C",  # ARABIC LIGATURE FEH WITH KHAH WITH MEEM FINAL FORM;Lo;0;AL;<final> 0641 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD7D",  # ARABIC LIGATURE FEH WITH KHAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0641 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD7E",  # ARABIC LIGATURE QAF WITH MEEM WITH HAH FINAL FORM;Lo;0;AL;<final> 0642 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD7F",  # ARABIC LIGATURE QAF WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0642 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD80",  # ARABIC LIGATURE LAM WITH HAH WITH MEEM FINAL FORM;Lo;0;AL;<final> 0644 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD81",  # ARABIC LIGATURE LAM WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0644 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD82",  # ARABIC LIGATURE LAM WITH HAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0644 062D 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD83",  # ARABIC LIGATURE LAM WITH JEEM WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0644 062C 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD84",  # ARABIC LIGATURE LAM WITH JEEM WITH JEEM FINAL FORM;Lo;0;AL;<final> 0644 062C 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD85",  # ARABIC LIGATURE LAM WITH KHAH WITH MEEM FINAL FORM;Lo;0;AL;<final> 0644 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD86",  # ARABIC LIGATURE LAM WITH KHAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0644 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD87",  # ARABIC LIGATURE LAM WITH MEEM WITH HAH FINAL FORM;Lo;0;AL;<final> 0644 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD88",  # ARABIC LIGATURE LAM WITH MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0644 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD89",  # ARABIC LIGATURE MEEM WITH HAH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0645 062D 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD8A",  # ARABIC LIGATURE MEEM WITH HAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0645 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD8B",  # ARABIC LIGATURE MEEM WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0645 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD8C",  # ARABIC LIGATURE MEEM WITH JEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0645 062C 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD8D",  # ARABIC LIGATURE MEEM WITH JEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0645 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD8E",  # ARABIC LIGATURE MEEM WITH KHAH WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0645 062E 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD8F",  # ARABIC LIGATURE MEEM WITH KHAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0645 062E 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD92",  # ARABIC LIGATURE MEEM WITH JEEM WITH KHAH INITIAL FORM;Lo;0;AL;<initial> 0645 062C 062E;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD93",  # ARABIC LIGATURE HEH WITH MEEM WITH JEEM INITIAL FORM;Lo;0;AL;<initial> 0647 0645 062C;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD94",  # ARABIC LIGATURE HEH WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0647 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD95",  # ARABIC LIGATURE NOON WITH HAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0646 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD96",  # ARABIC LIGATURE NOON WITH HAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0646 062D 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD97",  # ARABIC LIGATURE NOON WITH JEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0646 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD98",  # ARABIC LIGATURE NOON WITH JEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0646 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD99",  # ARABIC LIGATURE NOON WITH JEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0646 062C 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD9A",  # ARABIC LIGATURE NOON WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0646 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD9B",  # ARABIC LIGATURE NOON WITH MEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0646 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD9C",  # ARABIC LIGATURE YEH WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 064A 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD9D",  # ARABIC LIGATURE YEH WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 064A 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD9E",  # ARABIC LIGATURE BEH WITH KHAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0628 062E 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FD9F",  # ARABIC LIGATURE TEH WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 062A 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA0",  # ARABIC LIGATURE TEH WITH JEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062A 062C 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA1",  # ARABIC LIGATURE TEH WITH KHAH WITH YEH FINAL FORM;Lo;0;AL;<final> 062A 062E 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA2",  # ARABIC LIGATURE TEH WITH KHAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062A 062E 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA3",  # ARABIC LIGATURE TEH WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 062A 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA4",  # ARABIC LIGATURE TEH WITH MEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062A 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA5",  # ARABIC LIGATURE JEEM WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 062C 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA6",  # ARABIC LIGATURE JEEM WITH HAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062C 062D 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA7",  # ARABIC LIGATURE JEEM WITH MEEM WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 062C 0645 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA8",  # ARABIC LIGATURE SEEN WITH KHAH WITH ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0633 062E 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDA9",  # ARABIC LIGATURE SAD WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0635 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDAA",  # ARABIC LIGATURE SHEEN WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0634 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDAB",  # ARABIC LIGATURE DAD WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0636 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDAC",  # ARABIC LIGATURE LAM WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0644 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDAD",  # ARABIC LIGATURE LAM WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0644 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDAE",  # ARABIC LIGATURE YEH WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 064A 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDAF",  # ARABIC LIGATURE YEH WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 064A 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB0",  # ARABIC LIGATURE YEH WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 064A 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB1",  # ARABIC LIGATURE MEEM WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0645 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB2",  # ARABIC LIGATURE QAF WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0642 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB3",  # ARABIC LIGATURE NOON WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0646 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB4",  # ARABIC LIGATURE QAF WITH MEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0642 0645 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB5",  # ARABIC LIGATURE LAM WITH HAH WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0644 062D 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB6",  # ARABIC LIGATURE AIN WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0639 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB7",  # ARABIC LIGATURE KAF WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0643 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB8",  # ARABIC LIGATURE NOON WITH JEEM WITH HAH INITIAL FORM;Lo;0;AL;<initial> 0646 062C 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDB9",  # ARABIC LIGATURE MEEM WITH KHAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0645 062E 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDBA",  # ARABIC LIGATURE LAM WITH JEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0644 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDBB",  # ARABIC LIGATURE KAF WITH MEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0643 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDBC",  # ARABIC LIGATURE LAM WITH JEEM WITH MEEM FINAL FORM;Lo;0;AL;<final> 0644 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDBD",  # ARABIC LIGATURE NOON WITH JEEM WITH HAH FINAL FORM;Lo;0;AL;<final> 0646 062C 062D;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDBE",  # ARABIC LIGATURE JEEM WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 062C 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDBF",  # ARABIC LIGATURE HAH WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 062D 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC0",  # ARABIC LIGATURE MEEM WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0645 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC1",  # ARABIC LIGATURE FEH WITH MEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0641 0645 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC2",  # ARABIC LIGATURE BEH WITH HAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0628 062D 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC3",  # ARABIC LIGATURE KAF WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0643 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC4",  # ARABIC LIGATURE AIN WITH JEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0639 062C 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC5",  # ARABIC LIGATURE SAD WITH MEEM WITH MEEM INITIAL FORM;Lo;0;AL;<initial> 0635 0645 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC6",  # ARABIC LIGATURE SEEN WITH KHAH WITH YEH FINAL FORM;Lo;0;AL;<final> 0633 062E 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDC7",  # ARABIC LIGATURE NOON WITH JEEM WITH YEH FINAL FORM;Lo;0;AL;<final> 0646 062C 064A;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF0",  # ARABIC LIGATURE SALLA USED AS KORANIC STOP SIGN ISOLATED FORM;Lo;0;AL;<isolated> 0635 0644 06D2;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF1",  # ARABIC LIGATURE QALA USED AS KORANIC STOP SIGN ISOLATED FORM;Lo;0;AL;<isolated> 0642 0644 06D2;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF3",  # ARABIC LIGATURE AKBAR ISOLATED FORM;Lo;0;AL;<isolated> 0627 0643 0628 0631;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF4",  # ARABIC LIGATURE MOHAMMAD ISOLATED FORM;Lo;0;AL;<isolated> 0645 062D 0645 062F;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF5",  # ARABIC LIGATURE SALAM ISOLATED FORM;Lo;0;AL;<isolated> 0635 0644 0639 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF6",  # ARABIC LIGATURE RASOUL ISOLATED FORM;Lo;0;AL;<isolated> 0631 0633 0648 0644;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF7",  # ARABIC LIGATURE ALAYHE ISOLATED FORM;Lo;0;AL;<isolated> 0639 0644 064A 0647;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF8",  # ARABIC LIGATURE WASALLAM ISOLATED FORM;Lo;0;AL;<isolated> 0648 0633 0644 0645;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDF9",  # ARABIC LIGATURE SALLA ISOLATED FORM;Lo;0;AL;<isolated> 0635 0644 0649;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FDFB",  # ARABIC LIGATURE JALLAJALALOUHOU;Lo;0;AL;<isolated> 062C 0644 0020 062C 0644 0627 0644 0647;;;;N;ARABIC LETTER JALLAJALALOUHOU;;;; 0 occs, 0 decomposed occs
+#  "", "FDFD",  # ARABIC LIGATURE BISMILLAH AR-RAHMAN AR-RAHEEM;So;0;ON;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FE70",  # ARABIC FATHATAN ISOLATED FORM;Lo;0;AL;<isolated> 0020 064B;;;;N;ARABIC SPACING FATHATAN;;;; 0 occs, 0 decomposed occs
+#  "", "FE71",  # ARABIC TATWEEL WITH FATHATAN ABOVE;Lo;0;AL;<medial> 0640 064B;;;;N;ARABIC FATHATAN ON TATWEEL;;;; 0 occs, 0 decomposed occs
+#  "", "FE72",  # ARABIC DAMMATAN ISOLATED FORM;Lo;0;AL;<isolated> 0020 064C;;;;N;ARABIC SPACING DAMMATAN;;;; 0 occs, 0 decomposed occs
+#  "", "FE73",  # ARABIC TAIL FRAGMENT;Lo;0;AL;;;;;N;;;;; 0 occs, 0 decomposed occs
+#  "", "FE74",  # ARABIC KASRATAN ISOLATED FORM;Lo;0;AL;<isolated> 0020 064D;;;;N;ARABIC SPACING KASRATAN;;;; 0 occs, 0 decomposed occs
+#  "", "FE76",  # ARABIC FATHA ISOLATED FORM;Lo;0;AL;<isolated> 0020 064E;;;;N;ARABIC SPACING FATHAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE77",  # ARABIC FATHA MEDIAL FORM;Lo;0;AL;<medial> 0640 064E;;;;N;ARABIC FATHAH ON TATWEEL;;;; 0 occs, 0 decomposed occs
+#  "", "FE78",  # ARABIC DAMMA ISOLATED FORM;Lo;0;AL;<isolated> 0020 064F;;;;N;ARABIC SPACING DAMMAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE79",  # ARABIC DAMMA MEDIAL FORM;Lo;0;AL;<medial> 0640 064F;;;;N;ARABIC DAMMAH ON TATWEEL;;;; 0 occs, 0 decomposed occs
+#  "", "FE7A",  # ARABIC KASRA ISOLATED FORM;Lo;0;AL;<isolated> 0020 0650;;;;N;ARABIC SPACING KASRAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE7B",  # ARABIC KASRA MEDIAL FORM;Lo;0;AL;<medial> 0640 0650;;;;N;ARABIC KASRAH ON TATWEEL;;;; 0 occs, 0 decomposed occs
+#  "", "FE7C",  # ARABIC SHADDA ISOLATED FORM;Lo;0;AL;<isolated> 0020 0651;;;;N;ARABIC SPACING SHADDAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE7D",  # ARABIC SHADDA MEDIAL FORM;Lo;0;AL;<medial> 0640 0651;;;;N;ARABIC SHADDAH ON TATWEEL;;;; 0 occs, 0 decomposed occs
+#  "", "FE7E",  # ARABIC SUKUN ISOLATED FORM;Lo;0;AL;<isolated> 0020 0652;;;;N;ARABIC SPACING SUKUN;;;; 0 occs, 0 decomposed occs
+#  "", "FE7F",  # ARABIC SUKUN MEDIAL FORM;Lo;0;AL;<medial> 0640 0652;;;;N;ARABIC SUKUN ON TATWEEL;;;; 0 occs, 0 decomposed occs
+#  "", "FE80",  # ARABIC LETTER HAMZA ISOLATED FORM;Lo;0;AL;<isolated> 0621;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE81",  # ARABIC LETTER ALEF WITH MADDA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0622;;;;N;GLYPH FOR ISOLATE ARABIC MADDAH ON ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE82",  # ARABIC LETTER ALEF WITH MADDA ABOVE FINAL FORM;Lo;0;AL;<final> 0622;;;;N;GLYPH FOR FINAL ARABIC MADDAH ON ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE83",  # ARABIC LETTER ALEF WITH HAMZA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0623;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH ON ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE84",  # ARABIC LETTER ALEF WITH HAMZA ABOVE FINAL FORM;Lo;0;AL;<final> 0623;;;;N;GLYPH FOR FINAL ARABIC HAMZAH ON ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE86",  # ARABIC LETTER WAW WITH HAMZA ABOVE FINAL FORM;Lo;0;AL;<final> 0624;;;;N;GLYPH FOR FINAL ARABIC HAMZAH ON WAW;;;; 0 occs, 0 decomposed occs
+#  "", "FE87",  # ARABIC LETTER ALEF WITH HAMZA BELOW ISOLATED FORM;Lo;0;AL;<isolated> 0625;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH UNDER ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE88",  # ARABIC LETTER ALEF WITH HAMZA BELOW FINAL FORM;Lo;0;AL;<final> 0625;;;;N;GLYPH FOR FINAL ARABIC HAMZAH UNDER ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE89",  # ARABIC LETTER YEH WITH HAMZA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0626;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH ON YA;;;; 0 occs, 0 decomposed occs
+#  "", "FE8A",  # ARABIC LETTER YEH WITH HAMZA ABOVE FINAL FORM;Lo;0;AL;<final> 0626;;;;N;GLYPH FOR FINAL ARABIC HAMZAH ON YA;;;; 0 occs, 0 decomposed occs
+#  "", "FE8B",  # ARABIC LETTER YEH WITH HAMZA ABOVE INITIAL FORM;Lo;0;AL;<initial> 0626;;;;N;GLYPH FOR INITIAL ARABIC HAMZAH ON YA;;;; 0 occs, 0 decomposed occs
+#  "", "FE8C",  # ARABIC LETTER YEH WITH HAMZA ABOVE MEDIAL FORM;Lo;0;AL;<medial> 0626;;;;N;GLYPH FOR MEDIAL ARABIC HAMZAH ON YA;;;; 0 occs, 0 decomposed occs
+#  "", "FE8D",  # ARABIC LETTER ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0627;;;;N;GLYPH FOR ISOLATE ARABIC ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE8E",  # ARABIC LETTER ALEF FINAL FORM;Lo;0;AL;<final> 0627;;;;N;GLYPH FOR FINAL ARABIC ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FE8F",  # ARABIC LETTER BEH ISOLATED FORM;Lo;0;AL;<isolated> 0628;;;;N;GLYPH FOR ISOLATE ARABIC BAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE90",  # ARABIC LETTER BEH FINAL FORM;Lo;0;AL;<final> 0628;;;;N;GLYPH FOR FINAL ARABIC BAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE91",  # ARABIC LETTER BEH INITIAL FORM;Lo;0;AL;<initial> 0628;;;;N;GLYPH FOR INITIAL ARABIC BAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE92",  # ARABIC LETTER BEH MEDIAL FORM;Lo;0;AL;<medial> 0628;;;;N;GLYPH FOR MEDIAL ARABIC BAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE93",  # ARABIC LETTER TEH MARBUTA ISOLATED FORM;Lo;0;AL;<isolated> 0629;;;;N;GLYPH FOR ISOLATE ARABIC TAA MARBUTAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE94",  # ARABIC LETTER TEH MARBUTA FINAL FORM;Lo;0;AL;<final> 0629;;;;N;GLYPH FOR FINAL ARABIC TAA MARBUTAH;;;; 0 occs, 0 decomposed occs
+#  "", "FE95",  # ARABIC LETTER TEH ISOLATED FORM;Lo;0;AL;<isolated> 062A;;;;N;GLYPH FOR ISOLATE ARABIC TAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE96",  # ARABIC LETTER TEH FINAL FORM;Lo;0;AL;<final> 062A;;;;N;GLYPH FOR FINAL ARABIC TAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE97",  # ARABIC LETTER TEH INITIAL FORM;Lo;0;AL;<initial> 062A;;;;N;GLYPH FOR INITIAL ARABIC TAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE98",  # ARABIC LETTER TEH MEDIAL FORM;Lo;0;AL;<medial> 062A;;;;N;GLYPH FOR MEDIAL ARABIC TAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE99",  # ARABIC LETTER THEH ISOLATED FORM;Lo;0;AL;<isolated> 062B;;;;N;GLYPH FOR ISOLATE ARABIC THAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE9A",  # ARABIC LETTER THEH FINAL FORM;Lo;0;AL;<final> 062B;;;;N;GLYPH FOR FINAL ARABIC THAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE9B",  # ARABIC LETTER THEH INITIAL FORM;Lo;0;AL;<initial> 062B;;;;N;GLYPH FOR INITIAL ARABIC THAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE9C",  # ARABIC LETTER THEH MEDIAL FORM;Lo;0;AL;<medial> 062B;;;;N;GLYPH FOR MEDIAL ARABIC THAA;;;; 0 occs, 0 decomposed occs
+#  "", "FE9D",  # ARABIC LETTER JEEM ISOLATED FORM;Lo;0;AL;<isolated> 062C;;;;N;GLYPH FOR ISOLATE ARABIC JEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FE9E",  # ARABIC LETTER JEEM FINAL FORM;Lo;0;AL;<final> 062C;;;;N;GLYPH FOR FINAL ARABIC JEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FE9F",  # ARABIC LETTER JEEM INITIAL FORM;Lo;0;AL;<initial> 062C;;;;N;GLYPH FOR INITIAL ARABIC JEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FEA0",  # ARABIC LETTER JEEM MEDIAL FORM;Lo;0;AL;<medial> 062C;;;;N;GLYPH FOR MEDIAL ARABIC JEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FEA1",  # ARABIC LETTER HAH ISOLATED FORM;Lo;0;AL;<isolated> 062D;;;;N;GLYPH FOR ISOLATE ARABIC HAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA2",  # ARABIC LETTER HAH FINAL FORM;Lo;0;AL;<final> 062D;;;;N;GLYPH FOR FINAL ARABIC HAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA3",  # ARABIC LETTER HAH INITIAL FORM;Lo;0;AL;<initial> 062D;;;;N;GLYPH FOR INITIAL ARABIC HAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA4",  # ARABIC LETTER HAH MEDIAL FORM;Lo;0;AL;<medial> 062D;;;;N;GLYPH FOR MEDIAL ARABIC HAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA5",  # ARABIC LETTER KHAH ISOLATED FORM;Lo;0;AL;<isolated> 062E;;;;N;GLYPH FOR ISOLATE ARABIC KHAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA6",  # ARABIC LETTER KHAH FINAL FORM;Lo;0;AL;<final> 062E;;;;N;GLYPH FOR FINAL ARABIC KHAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA7",  # ARABIC LETTER KHAH INITIAL FORM;Lo;0;AL;<initial> 062E;;;;N;GLYPH FOR INITIAL ARABIC KHAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA8",  # ARABIC LETTER KHAH MEDIAL FORM;Lo;0;AL;<medial> 062E;;;;N;GLYPH FOR MEDIAL ARABIC KHAA;;;; 0 occs, 0 decomposed occs
+#  "", "FEA9",  # ARABIC LETTER DAL ISOLATED FORM;Lo;0;AL;<isolated> 062F;;;;N;GLYPH FOR ISOLATE ARABIC DAL;;;; 0 occs, 0 decomposed occs
+#  "", "FEAA",  # ARABIC LETTER DAL FINAL FORM;Lo;0;AL;<final> 062F;;;;N;GLYPH FOR FINAL ARABIC DAL;;;; 0 occs, 0 decomposed occs
+#  "", "FEAB",  # ARABIC LETTER THAL ISOLATED FORM;Lo;0;AL;<isolated> 0630;;;;N;GLYPH FOR ISOLATE ARABIC THAL;;;; 0 occs, 0 decomposed occs
+#  "", "FEAC",  # ARABIC LETTER THAL FINAL FORM;Lo;0;AL;<final> 0630;;;;N;GLYPH FOR FINAL ARABIC THAL;;;; 0 occs, 0 decomposed occs
+#  "", "FEAD",  # ARABIC LETTER REH ISOLATED FORM;Lo;0;AL;<isolated> 0631;;;;N;GLYPH FOR ISOLATE ARABIC RA;;;; 0 occs, 0 decomposed occs
+#  "", "FEAE",  # ARABIC LETTER REH FINAL FORM;Lo;0;AL;<final> 0631;;;;N;GLYPH FOR FINAL ARABIC RA;;;; 0 occs, 0 decomposed occs
+#  "", "FEAF",  # ARABIC LETTER ZAIN ISOLATED FORM;Lo;0;AL;<isolated> 0632;;;;N;GLYPH FOR ISOLATE ARABIC ZAIN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB0",  # ARABIC LETTER ZAIN FINAL FORM;Lo;0;AL;<final> 0632;;;;N;GLYPH FOR FINAL ARABIC ZAIN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB1",  # ARABIC LETTER SEEN ISOLATED FORM;Lo;0;AL;<isolated> 0633;;;;N;GLYPH FOR ISOLATE ARABIC SEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB2",  # ARABIC LETTER SEEN FINAL FORM;Lo;0;AL;<final> 0633;;;;N;GLYPH FOR FINAL ARABIC SEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB3",  # ARABIC LETTER SEEN INITIAL FORM;Lo;0;AL;<initial> 0633;;;;N;GLYPH FOR INITIAL ARABIC SEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB4",  # ARABIC LETTER SEEN MEDIAL FORM;Lo;0;AL;<medial> 0633;;;;N;GLYPH FOR MEDIAL ARABIC SEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB5",  # ARABIC LETTER SHEEN ISOLATED FORM;Lo;0;AL;<isolated> 0634;;;;N;GLYPH FOR ISOLATE ARABIC SHEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB6",  # ARABIC LETTER SHEEN FINAL FORM;Lo;0;AL;<final> 0634;;;;N;GLYPH FOR FINAL ARABIC SHEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB7",  # ARABIC LETTER SHEEN INITIAL FORM;Lo;0;AL;<initial> 0634;;;;N;GLYPH FOR INITIAL ARABIC SHEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB8",  # ARABIC LETTER SHEEN MEDIAL FORM;Lo;0;AL;<medial> 0634;;;;N;GLYPH FOR MEDIAL ARABIC SHEEN;;;; 0 occs, 0 decomposed occs
+#  "", "FEB9",  # ARABIC LETTER SAD ISOLATED FORM;Lo;0;AL;<isolated> 0635;;;;N;GLYPH FOR ISOLATE ARABIC SAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEBA",  # ARABIC LETTER SAD FINAL FORM;Lo;0;AL;<final> 0635;;;;N;GLYPH FOR FINAL ARABIC SAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEBB",  # ARABIC LETTER SAD INITIAL FORM;Lo;0;AL;<initial> 0635;;;;N;GLYPH FOR INITIAL ARABIC SAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEBC",  # ARABIC LETTER SAD MEDIAL FORM;Lo;0;AL;<medial> 0635;;;;N;GLYPH FOR MEDIAL ARABIC SAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEBD",  # ARABIC LETTER DAD ISOLATED FORM;Lo;0;AL;<isolated> 0636;;;;N;GLYPH FOR ISOLATE ARABIC DAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEBE",  # ARABIC LETTER DAD FINAL FORM;Lo;0;AL;<final> 0636;;;;N;GLYPH FOR FINAL ARABIC DAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEBF",  # ARABIC LETTER DAD INITIAL FORM;Lo;0;AL;<initial> 0636;;;;N;GLYPH FOR INITIAL ARABIC DAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEC0",  # ARABIC LETTER DAD MEDIAL FORM;Lo;0;AL;<medial> 0636;;;;N;GLYPH FOR MEDIAL ARABIC DAD;;;; 0 occs, 0 decomposed occs
+#  "", "FEC1",  # ARABIC LETTER TAH ISOLATED FORM;Lo;0;AL;<isolated> 0637;;;;N;GLYPH FOR ISOLATE ARABIC TAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC2",  # ARABIC LETTER TAH FINAL FORM;Lo;0;AL;<final> 0637;;;;N;GLYPH FOR FINAL ARABIC TAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC3",  # ARABIC LETTER TAH INITIAL FORM;Lo;0;AL;<initial> 0637;;;;N;GLYPH FOR INITIAL ARABIC TAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC4",  # ARABIC LETTER TAH MEDIAL FORM;Lo;0;AL;<medial> 0637;;;;N;GLYPH FOR MEDIAL ARABIC TAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC5",  # ARABIC LETTER ZAH ISOLATED FORM;Lo;0;AL;<isolated> 0638;;;;N;GLYPH FOR ISOLATE ARABIC DHAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC6",  # ARABIC LETTER ZAH FINAL FORM;Lo;0;AL;<final> 0638;;;;N;GLYPH FOR FINAL ARABIC DHAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC7",  # ARABIC LETTER ZAH INITIAL FORM;Lo;0;AL;<initial> 0638;;;;N;GLYPH FOR INITIAL ARABIC DHAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC8",  # ARABIC LETTER ZAH MEDIAL FORM;Lo;0;AL;<medial> 0638;;;;N;GLYPH FOR MEDIAL ARABIC DHAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEC9",  # ARABIC LETTER AIN ISOLATED FORM;Lo;0;AL;<isolated> 0639;;;;N;GLYPH FOR ISOLATE ARABIC AIN;;;; 0 occs, 0 decomposed occs
+#  "", "FECA",  # ARABIC LETTER AIN FINAL FORM;Lo;0;AL;<final> 0639;;;;N;GLYPH FOR FINAL ARABIC AIN;;;; 0 occs, 0 decomposed occs
+#  "", "FECB",  # ARABIC LETTER AIN INITIAL FORM;Lo;0;AL;<initial> 0639;;;;N;GLYPH FOR INITIAL ARABIC AIN;;;; 0 occs, 0 decomposed occs
+#  "", "FECC",  # ARABIC LETTER AIN MEDIAL FORM;Lo;0;AL;<medial> 0639;;;;N;GLYPH FOR MEDIAL ARABIC AIN;;;; 0 occs, 0 decomposed occs
+#  "", "FECD",  # ARABIC LETTER GHAIN ISOLATED FORM;Lo;0;AL;<isolated> 063A;;;;N;GLYPH FOR ISOLATE ARABIC GHAIN;;;; 0 occs, 0 decomposed occs
+#  "", "FECE",  # ARABIC LETTER GHAIN FINAL FORM;Lo;0;AL;<final> 063A;;;;N;GLYPH FOR FINAL ARABIC GHAIN;;;; 0 occs, 0 decomposed occs
+#  "", "FECF",  # ARABIC LETTER GHAIN INITIAL FORM;Lo;0;AL;<initial> 063A;;;;N;GLYPH FOR INITIAL ARABIC GHAIN;;;; 0 occs, 0 decomposed occs
+#  "", "FED0",  # ARABIC LETTER GHAIN MEDIAL FORM;Lo;0;AL;<medial> 063A;;;;N;GLYPH FOR MEDIAL ARABIC GHAIN;;;; 0 occs, 0 decomposed occs
+#  "", "FED1",  # ARABIC LETTER FEH ISOLATED FORM;Lo;0;AL;<isolated> 0641;;;;N;GLYPH FOR ISOLATE ARABIC FA;;;; 0 occs, 0 decomposed occs
+#  "", "FED2",  # ARABIC LETTER FEH FINAL FORM;Lo;0;AL;<final> 0641;;;;N;GLYPH FOR FINAL ARABIC FA;;;; 0 occs, 0 decomposed occs
+#  "", "FED3",  # ARABIC LETTER FEH INITIAL FORM;Lo;0;AL;<initial> 0641;;;;N;GLYPH FOR INITIAL ARABIC FA;;;; 0 occs, 0 decomposed occs
+#  "", "FED4",  # ARABIC LETTER FEH MEDIAL FORM;Lo;0;AL;<medial> 0641;;;;N;GLYPH FOR MEDIAL ARABIC FA;;;; 0 occs, 0 decomposed occs
+#  "", "FED5",  # ARABIC LETTER QAF ISOLATED FORM;Lo;0;AL;<isolated> 0642;;;;N;GLYPH FOR ISOLATE ARABIC QAF;;;; 0 occs, 0 decomposed occs
+#  "", "FED6",  # ARABIC LETTER QAF FINAL FORM;Lo;0;AL;<final> 0642;;;;N;GLYPH FOR FINAL ARABIC QAF;;;; 0 occs, 0 decomposed occs
+#  "", "FED7",  # ARABIC LETTER QAF INITIAL FORM;Lo;0;AL;<initial> 0642;;;;N;GLYPH FOR INITIAL ARABIC QAF;;;; 0 occs, 0 decomposed occs
+#  "", "FED8",  # ARABIC LETTER QAF MEDIAL FORM;Lo;0;AL;<medial> 0642;;;;N;GLYPH FOR MEDIAL ARABIC QAF;;;; 0 occs, 0 decomposed occs
+#  "", "FED9",  # ARABIC LETTER KAF ISOLATED FORM;Lo;0;AL;<isolated> 0643;;;;N;GLYPH FOR ISOLATE ARABIC CAF;;;; 0 occs, 0 decomposed occs
+#  "", "FEDA",  # ARABIC LETTER KAF FINAL FORM;Lo;0;AL;<final> 0643;;;;N;GLYPH FOR FINAL ARABIC CAF;;;; 0 occs, 0 decomposed occs
+#  "", "FEDB",  # ARABIC LETTER KAF INITIAL FORM;Lo;0;AL;<initial> 0643;;;;N;GLYPH FOR INITIAL ARABIC CAF;;;; 0 occs, 0 decomposed occs
+#  "", "FEDC",  # ARABIC LETTER KAF MEDIAL FORM;Lo;0;AL;<medial> 0643;;;;N;GLYPH FOR MEDIAL ARABIC CAF;;;; 0 occs, 0 decomposed occs
+#  "", "FEDD",  # ARABIC LETTER LAM ISOLATED FORM;Lo;0;AL;<isolated> 0644;;;;N;GLYPH FOR ISOLATE ARABIC LAM;;;; 0 occs, 0 decomposed occs
+#  "", "FEDE",  # ARABIC LETTER LAM FINAL FORM;Lo;0;AL;<final> 0644;;;;N;GLYPH FOR FINAL ARABIC LAM;;;; 0 occs, 0 decomposed occs
+#  "", "FEDF",  # ARABIC LETTER LAM INITIAL FORM;Lo;0;AL;<initial> 0644;;;;N;GLYPH FOR INITIAL ARABIC LAM;;;; 0 occs, 0 decomposed occs
+#  "", "FEE0",  # ARABIC LETTER LAM MEDIAL FORM;Lo;0;AL;<medial> 0644;;;;N;GLYPH FOR MEDIAL ARABIC LAM;;;; 0 occs, 0 decomposed occs
+#  "", "FEE1",  # ARABIC LETTER MEEM ISOLATED FORM;Lo;0;AL;<isolated> 0645;;;;N;GLYPH FOR ISOLATE ARABIC MEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FEE2",  # ARABIC LETTER MEEM FINAL FORM;Lo;0;AL;<final> 0645;;;;N;GLYPH FOR FINAL ARABIC MEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FEE3",  # ARABIC LETTER MEEM INITIAL FORM;Lo;0;AL;<initial> 0645;;;;N;GLYPH FOR INITIAL ARABIC MEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FEE4",  # ARABIC LETTER MEEM MEDIAL FORM;Lo;0;AL;<medial> 0645;;;;N;GLYPH FOR MEDIAL ARABIC MEEM;;;; 0 occs, 0 decomposed occs
+#  "", "FEE5",  # ARABIC LETTER NOON ISOLATED FORM;Lo;0;AL;<isolated> 0646;;;;N;GLYPH FOR ISOLATE ARABIC NOON;;;; 0 occs, 0 decomposed occs
+#  "", "FEE6",  # ARABIC LETTER NOON FINAL FORM;Lo;0;AL;<final> 0646;;;;N;GLYPH FOR FINAL ARABIC NOON;;;; 0 occs, 0 decomposed occs
+#  "", "FEE7",  # ARABIC LETTER NOON INITIAL FORM;Lo;0;AL;<initial> 0646;;;;N;GLYPH FOR INITIAL ARABIC NOON;;;; 0 occs, 0 decomposed occs
+#  "", "FEE8",  # ARABIC LETTER NOON MEDIAL FORM;Lo;0;AL;<medial> 0646;;;;N;GLYPH FOR MEDIAL ARABIC NOON;;;; 0 occs, 0 decomposed occs
+#  "", "FEE9",  # ARABIC LETTER HEH ISOLATED FORM;Lo;0;AL;<isolated> 0647;;;;N;GLYPH FOR ISOLATE ARABIC HA;;;; 0 occs, 0 decomposed occs
+#  "", "FEEA",  # ARABIC LETTER HEH FINAL FORM;Lo;0;AL;<final> 0647;;;;N;GLYPH FOR FINAL ARABIC HA;;;; 0 occs, 0 decomposed occs
+#  "", "FEEB",  # ARABIC LETTER HEH INITIAL FORM;Lo;0;AL;<initial> 0647;;;;N;GLYPH FOR INITIAL ARABIC HA;;;; 0 occs, 0 decomposed occs
+#  "", "FEEC",  # ARABIC LETTER HEH MEDIAL FORM;Lo;0;AL;<medial> 0647;;;;N;GLYPH FOR MEDIAL ARABIC HA;;;; 0 occs, 0 decomposed occs
+#  "", "FEED",  # ARABIC LETTER WAW ISOLATED FORM;Lo;0;AL;<isolated> 0648;;;;N;GLYPH FOR ISOLATE ARABIC WAW;;;; 0 occs, 0 decomposed occs
+#  "", "FEEE",  # ARABIC LETTER WAW FINAL FORM;Lo;0;AL;<final> 0648;;;;N;GLYPH FOR FINAL ARABIC WAW;;;; 0 occs, 0 decomposed occs
+#  "", "FEEF",  # ARABIC LETTER ALEF MAKSURA ISOLATED FORM;Lo;0;AL;<isolated> 0649;;;;N;GLYPH FOR ISOLATE ARABIC ALEF MAQSURAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEF0",  # ARABIC LETTER ALEF MAKSURA FINAL FORM;Lo;0;AL;<final> 0649;;;;N;GLYPH FOR FINAL ARABIC ALEF MAQSURAH;;;; 0 occs, 0 decomposed occs
+#  "", "FEF1",  # ARABIC LETTER YEH ISOLATED FORM;Lo;0;AL;<isolated> 064A;;;;N;GLYPH FOR ISOLATE ARABIC YA;;;; 0 occs, 0 decomposed occs
+#  "", "FEF2",  # ARABIC LETTER YEH FINAL FORM;Lo;0;AL;<final> 064A;;;;N;GLYPH FOR FINAL ARABIC YA;;;; 0 occs, 0 decomposed occs
+#  "", "FEF3",  # ARABIC LETTER YEH INITIAL FORM;Lo;0;AL;<initial> 064A;;;;N;GLYPH FOR INITIAL ARABIC YA;;;; 0 occs, 0 decomposed occs
+#  "", "FEF4",  # ARABIC LETTER YEH MEDIAL FORM;Lo;0;AL;<medial> 064A;;;;N;GLYPH FOR MEDIAL ARABIC YA;;;; 0 occs, 0 decomposed occs
+#  "", "FEF5",  # ARABIC LIGATURE LAM WITH ALEF WITH MADDA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0644 0622;;;;N;GLYPH FOR ISOLATE ARABIC MADDAH ON LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEF6",  # ARABIC LIGATURE LAM WITH ALEF WITH MADDA ABOVE FINAL FORM;Lo;0;AL;<final> 0644 0622;;;;N;GLYPH FOR FINAL ARABIC MADDAH ON LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEF7",  # ARABIC LIGATURE LAM WITH ALEF WITH HAMZA ABOVE ISOLATED FORM;Lo;0;AL;<isolated> 0644 0623;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH ON LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEF8",  # ARABIC LIGATURE LAM WITH ALEF WITH HAMZA ABOVE FINAL FORM;Lo;0;AL;<final> 0644 0623;;;;N;GLYPH FOR FINAL ARABIC HAMZAH ON LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEF9",  # ARABIC LIGATURE LAM WITH ALEF WITH HAMZA BELOW ISOLATED FORM;Lo;0;AL;<isolated> 0644 0625;;;;N;GLYPH FOR ISOLATE ARABIC HAMZAH UNDER LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEFA",  # ARABIC LIGATURE LAM WITH ALEF WITH HAMZA BELOW FINAL FORM;Lo;0;AL;<final> 0644 0625;;;;N;GLYPH FOR FINAL ARABIC HAMZAH UNDER LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEFB",  # ARABIC LIGATURE LAM WITH ALEF ISOLATED FORM;Lo;0;AL;<isolated> 0644 0627;;;;N;GLYPH FOR ISOLATE ARABIC LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+#  "", "FEFC",  # ARABIC LIGATURE LAM WITH ALEF FINAL FORM;Lo;0;AL;<final> 0644 0627;;;;N;GLYPH FOR FINAL ARABIC LIGATURE LAM ALEF;;;; 0 occs, 0 decomposed occs
+  "╳", "FEFF",  # BOM
+  "×", "200D",  # ZERO-WIDTH JOINER
+  "◆", "200C",  # ZERO-WIDTH NON-JOINER
+  "»", "200E",  # LEFT-TO-RIGHT-MARK
+  "«", "200F",  # RIGHT-TO-LEFT-MARK
+);
+
+# check the map
+my %seen;
+foreach my $v (@map) {
+  die "Can't use our escape char '$escape_char' in the mapping."
+    if $v eq $escape_char;
+  die "Ambiguous: '$v'" if $seen{$v};
+  $seen{$v} = 1;
+}
+foreach my $v (@unmapped) {
+  die "Confict between mapped an unmapped: '$v'" if $seen{$v};
+}
+
+my %map = @map;
+my %unmapped = map { ($_, 1) } @unmapped;
+if ($digits_latin) {
+  foreach my $d (qw(0 1 2 3 4 5 6 7 8 9)) {
+    $unmapped{$d} = 1;
+  }
+}
+
+my %usemap;
+foreach my $k (keys %map) {
+  my $hex = $map{$k};
+  if ($inverse) {
+    $usemap{$k} = chr(hex($hex));
+  } else {
+    $usemap{chr(hex($hex))} = $k;
+  }
+}
+
+### Does not work.
+# sub mymap {
+#   return join("",
+#     map {
+#       my $c = chr($_);
+#       print $_, " ($c)\n";
+#       if ($c =~ /[- ,?]/) {
+#         $c;
+#       } elsif (defined $usemap{$_}) {
+#         $usemap{$_};
+#       } else {
+#         "$escape_char$c";
+#       }
+#     } unpack("U*", $_[0]));           # unpack Unicode characters
+# }
+ 
+sub map_char {
+  my $c = shift;
+  # my $o = ord($c);
+  # print $o, " ($c)\n";
+  return $c if $unmapped{$c};
+  return $usemap{$c} if defined $usemap{$c};
+  return $c if $dont_mark_originals;
+  return "$escape_char$c";
+}
+
+sub inverse_map_char {
+  my $c = shift;
+  return $1 if $c =~ /^$escape_char(.)$/o;
+  # my $o = ord($c);
+  # print $o, " ($c)\n";
+  return $c if $unmapped{$c};
+  return $usemap{$c} if defined $usemap{$c};
+  return $c;
+}
+
+while (<>) {
+  chomp;
+  # print mymap($_);
+  if ($inverse) {
+    s/($escape_char?.)/inverse_map_char($1)/ge;
+  } else {
+    s/(.)/map_char($1)/ge;
+  }
+  print;
+  print "\n";
+}

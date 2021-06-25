@@ -1,0 +1,221 @@
+#!/usr/bin/perl
+# maps stdin Devanagari into Ondrej Bojar's random roman/latin script
+# Ondrej Bojar
+# bojar@ufal.mff.cuni.cz
+
+use strict;
+use utf8;
+use Getopt::Long;
+
+binmode(STDIN, ":utf8");
+binmode(STDOUT, ":utf8");
+binmode(STDERR, ":utf8");
+
+my $escape_char = "_";
+my $inverse = 0;
+my $digits_latin = 0; # collapse devanagari and latin digits into latin
+my $dont_mark_originals = 0; # don't add _ before untransliterated tokens
+GetOptions(
+  "inverse" => \$inverse,
+  "digits-latin" => \$digits_latin,
+  "dont-mark-originals" => \$dont_mark_originals,
+) or exit 1;
+
+my @unmapped = split //, "/- ,?:()[]!@#\%\$^&*+\\<>.~\"'";
+
+my @map = (
+  "ˇ", "0901",  # DEVANAGARI SIGN CANDRABINDU;Mn;0;NSM;;;;;N;;;;;      	ˇ
+  "ñ", "0902",  # DEVANAGARI SIGN ANUSVARA;Mn;0;NSM;;;;;N;;;;;         	˜
+  "ï", "0903",  # DEVANAGARI SIGN VISARGA;Mc;0;L;;;;;N;;;;;            	¨
+  "a", "0904",  # DEVANAGARI LETTER SHORT A;Lo;0;L;;;;;N;;;;;          	a
+  "A", "0905",  # DEVANAGARI LETTER A;Lo;0;L;;;;;N;;;;;                	A
+  "Ā", "0906",  # DEVANAGARI LETTER AA;Lo;0;L;;;;;N;;;;;               	Ā
+  "i", "0907",  # DEVANAGARI LETTER I;Lo;0;L;;;;;N;;;;;                	i
+  "Ī", "0908",  # DEVANAGARI LETTER II;Lo;0;L;;;;;N;;;;;               	Ī
+  "u", "0909",  # DEVANAGARI LETTER U;Lo;0;L;;;;;N;;;;;                	u
+  "Ū", "090A",  # DEVANAGARI LETTER UU;Lo;0;L;;;;;N;;;;;               	Ū
+  "ŗ", "090B",  # DEVANAGARI LETTER VOCALIC R;Lo;0;L;;;;;N;;;;;        	ŗ
+  "ļ", "090C",  # DEVANAGARI LETTER VOCALIC L;Lo;0;L;;;;;N;;;;;        	ļ
+  "ě", "090D",  # DEVANAGARI LETTER CANDRA E;Lo;0;L;;;;;N;;;;;         	ě
+  "e", "090E",  # DEVANAGARI LETTER SHORT E;Lo;0;L;;;;;N;;;;;          	e
+  "E", "090F",  # DEVANAGARI LETTER E;Lo;0;L;;;;;N;;;;;                	E
+  "Ą", "0910",  # DEVANAGARI LETTER AI;Lo;0;L;;;;;N;;;;;               	Ą
+  "ô", "0911",  # DEVANAGARI LETTER CANDRA O;Lo;0;L;;;;;N;;;;;         	ô
+  "o", "0912",  # DEVANAGARI LETTER SHORT O;Lo;0;L;;;;;N;;;;;          	o
+  "O", "0913",  # DEVANAGARI LETTER O;Lo;0;L;;;;;N;;;;;                	O
+  "æ", "0914",  # DEVANAGARI LETTER AU;Lo;0;L;;;;;N;;;;;               	æ
+  "k", "0915",  # DEVANAGARI LETTER KA;Lo;0;L;;;;;N;;;;;               	k
+  "ķ", "0916",  # DEVANAGARI LETTER KHA;Lo;0;L;;;;;N;;;;;              	ķ
+  "g", "0917",  # DEVANAGARI LETTER GA;Lo;0;L;;;;;N;;;;;               	g
+  "Ģ", "0918",  # DEVANAGARI LETTER GHA;Lo;0;L;;;;;N;;;;;              	Ģ
+  "ņ", "0919",  # DEVANAGARI LETTER NGA;Lo;0;L;;;;;N;;;;;              	ņ
+  "c", "091A",  # DEVANAGARI LETTER CA;Lo;0;L;;;;;N;;;;;               	c
+  "ç", "091B",  # DEVANAGARI LETTER CHA;Lo;0;L;;;;;N;;;;;              	ç
+  "j", "091C",  # DEVANAGARI LETTER JA;Lo;0;L;;;;;N;;;;;               	j
+  "ĳ", "091D",  # DEVANAGARI LETTER JHA;Lo;0;L;;;;;N;;;;;              	ĳ
+  "ŋ", "091E",  # DEVANAGARI LETTER NYA;Lo;0;L;;;;;N;;;;;              	ŋ
+  "T", "091F",  # DEVANAGARI LETTER TTA;Lo;0;L;;;;;N;;;;;              	T
+  "Ŧ", "0920",  # DEVANAGARI LETTER TTHA;Lo;0;L;;;;;N;;;;;             	Ŧ
+  "D", "0921",  # DEVANAGARI LETTER DDA;Lo;0;L;;;;;N;;;;;              	D
+  "Ð", "0922",  # DEVANAGARI LETTER DDHA;Lo;0;L;;;;;N;;;;;             	Ð
+  "N", "0923",  # DEVANAGARI LETTER NNA;Lo;0;L;;;;;N;;;;;              	N
+  "t", "0924",  # DEVANAGARI LETTER TA;Lo;0;L;;;;;N;;;;;               	t
+  "ŧ", "0925",  # DEVANAGARI LETTER THA;Lo;0;L;;;;;N;;;;;              	ŧ
+  "d", "0926",  # DEVANAGARI LETTER DA;Lo;0;L;;;;;N;;;;;               	d
+  "đ", "0927",  # DEVANAGARI LETTER DHA;Lo;0;L;;;;;N;;;;;              	đ
+  "n", "0928",  # DEVANAGARI LETTER NA;Lo;0;L;;;;;N;;;;;               	n
+  "Ń", "0929",  # DEVANAGARI LETTER NNNA;Lo;0;L;0928 093C;;;;N;;;;;    	Ń
+  "p", "092A",  # DEVANAGARI LETTER PA;Lo;0;L;;;;;N;;;;;               	p
+  "ṗ", "092B",  # DEVANAGARI LETTER PHA;Lo;0;L;;;;;N;;;;;              	ṗ
+  "b", "092C",  # DEVANAGARI LETTER BA;Lo;0;L;;;;;N;;;;;               	b
+  "þ", "092D",  # DEVANAGARI LETTER BHA;Lo;0;L;;;;;N;;;;;              	þ
+  "m", "092E",  # DEVANAGARI LETTER MA;Lo;0;L;;;;;N;;;;;               	m
+  "y", "092F",  # DEVANAGARI LETTER YA;Lo;0;L;;;;;N;;;;;               	y
+  "r", "0930",  # DEVANAGARI LETTER RA;Lo;0;L;;;;;N;;;;;               	r
+  "R", "0931",  # DEVANAGARI LETTER RRA;Lo;0;L;0930 093C;;;;N;;;;;     	R
+  "l", "0932",  # DEVANAGARI LETTER LA;Lo;0;L;;;;;N;;;;;               	l
+  "L", "0933",  # DEVANAGARI LETTER LLA;Lo;0;L;;;;;N;;;;;              	L
+  "Ĺ", "0934",  # DEVANAGARI LETTER LLLA;Lo;0;L;0933 093C;;;;N;;;;;    	Ĺ
+  "v", "0935",  # DEVANAGARI LETTER VA;Lo;0;L;;;;;N;;;;;               	v
+  "ş", "0936",  # DEVANAGARI LETTER SHA;Lo;0;L;;;;;N;;;;;              	ş
+  "S", "0937",  # DEVANAGARI LETTER SSA;Lo;0;L;;;;;N;;;;;              	S
+  "s", "0938",  # DEVANAGARI LETTER SA;Lo;0;L;;;;;N;;;;;               	s
+  "h", "0939",  # DEVANAGARI LETTER HA;Lo;0;L;;;;;N;;;;;               	h
+  "ų", "093C",  # DEVANAGARI SIGN NUKTA;Mn;7;NSM;;;;;N;;;;;            	͵
+  "ģ", "093D",  # DEVANAGARI SIGN AVAGRAHA;Lo;0;L;;;;;N;;;;;           	‚
+  "à", "093E",  # DEVANAGARI VOWEL SIGN AA;Mc;0;L;;;;;N;;;;;           	à
+  "ì", "093F",  # DEVANAGARI VOWEL SIGN I;Mc;0;L;;;;;N;;;;;            	ì
+  "Į", "0940",  # DEVANAGARI VOWEL SIGN II;Mc;0;L;;;;;N;;;;;           	Į
+  "ù", "0941",  # DEVANAGARI VOWEL SIGN U;Mn;0;NSM;;;;;N;;;;;          	ù
+  "Ù", "0942",  # DEVANAGARI VOWEL SIGN UU;Mn;0;NSM;;;;;N;;;;;         	Ù
+  "ř", "0943",  # DEVANAGARI VOWEL SIGN VOCALIC R;Mn;0;NSM;;;;;N;;;;;  	ř
+  "Ř", "0944",  # DEVANAGARI VOWEL SIGN VOCALIC RR;Mn;0;NSM;;;;;N;;;;; 	Ř
+  "ĕ", "0945",  # DEVANAGARI VOWEL SIGN CANDRA E;Mn;0;NSM;;;;;N;;;;;   	ĕ
+  "è", "0946",  # DEVANAGARI VOWEL SIGN SHORT E;Mn;0;NSM;;;;;N;;;;;    	è
+  "È", "0947",  # DEVANAGARI VOWEL SIGN E;Mn;0;NSM;;;;;N;;;;;          	È
+  "ą", "0948",  # DEVANAGARI VOWEL SIGN AI;Mn;0;NSM;;;;;N;;;;;         	ą
+  "õ", "0949",  # DEVANAGARI VOWEL SIGN CANDRA O;Mc;0;L;;;;;N;;;;;     	õ
+  "ò", "094A",  # DEVANAGARI VOWEL SIGN SHORT O;Mc;0;L;;;;;N;;;;;      	ò
+  "Ò", "094B",  # DEVANAGARI VOWEL SIGN O;Mc;0;L;;;;;N;;;;;            	Ò
+  "ã", "094C",  # DEVANAGARI VOWEL SIGN AU;Mc;0;L;;;;;N;;;;;           	ã
+  "ĩ", "094D",  # DEVANAGARI SIGN VIRAMA;Mn;9;NSM;;;;;N;;;;;           	’
+  "ø", "0950",  # DEVANAGARI OM;Lo;0;L;;;;;N;;;;;                      	ø
+  "ī", "0951",  # DEVANAGARI STRESS SIGN UDATTA;Mn;230;NSM;;;;;N;;;;;  	‘
+  "ĭ", "0952",  # DEVANAGARI STRESS SIGN ANUDATTA;Mn;220;NSM;;;;;N;;;;;	‛
+  "į", "0953",  # DEVANAGARI GRAVE ACCENT;Mn;230;NSM;;;;;N;;;;;        	`
+  "ı", "0954",  # DEVANAGARI ACUTE ACCENT;Mn;230;NSM;;;;;N;;;;;        	´
+  "q", "0958",  # DEVANAGARI LETTER QA;Lo;0;L;0915 093C;;;;N;;;;;      	q
+  "ĸ", "0959",  # DEVANAGARI LETTER KHHA;Lo;0;L;0916 093C;;;;N;;;;;    	ĸ
+  "Ħ", "095A",  # DEVANAGARI LETTER GHHA;Lo;0;L;0917 093C;;;;N;;;;;    	Ħ
+  "z", "095B",  # DEVANAGARI LETTER ZA;Lo;0;L;091C 093C;;;;N;;;;;      	z
+  "Đ", "095C",  # DEVANAGARI LETTER DDDHA;Lo;0;L;0921 093C;;;;N;;;;;   	Đ
+  "ŕ", "095D",  # DEVANAGARI LETTER RHA;Lo;0;L;0922 093C;;;;N;;;;;     	ŕ
+  "f", "095E",  # DEVANAGARI LETTER FA;Lo;0;L;092B 093C;;;;N;;;;;      	f
+  "Y", "095F",  # DEVANAGARI LETTER YYA;Lo;0;L;092F 093C;;;;N;;;;;     	Y
+  "Ŗ", "0960",  # DEVANAGARI LETTER VOCALIC RR;Lo;0;L;;;;;N;;;;;       	Ŗ
+  "Ļ", "0961",  # DEVANAGARI LETTER VOCALIC LL;Lo;0;L;;;;;N;;;;;       	Ļ
+  "ł", "0962",  # DEVANAGARI VOWEL SIGN VOCALIC L;Mn;0;NSM;;;;;N;;;;;  	ł
+  "Ł", "0963",  # DEVANAGARI VOWEL SIGN VOCALIC LL;Mn;0;NSM;;;;;N;;;;; 	Ł
+  "|", "0964",  # DEVANAGARI DANDA;Po;0;L;;;;;N;;;;;                   	|
+  "‖", "0965",  # DEVANAGARI DOUBLE DANDA;Po;0;L;;;;;N;;;;;            	‖
+  "0", "0966",  # DEVANAGARI DIGIT ZERO;Nd;0;L;;0;0;0;N;;;;;           	0
+  "1", "0967",  # DEVANAGARI DIGIT ONE;Nd;0;L;;1;1;1;N;;;;;            	1
+  "2", "0968",  # DEVANAGARI DIGIT TWO;Nd;0;L;;2;2;2;N;;;;;            	2
+  "3", "0969",  # DEVANAGARI DIGIT THREE;Nd;0;L;;3;3;3;N;;;;;          	3
+  "4", "096A",  # DEVANAGARI DIGIT FOUR;Nd;0;L;;4;4;4;N;;;;;           	4
+  "5", "096B",  # DEVANAGARI DIGIT FIVE;Nd;0;L;;5;5;5;N;;;;;           	5
+  "6", "096C",  # DEVANAGARI DIGIT SIX;Nd;0;L;;6;6;6;N;;;;;            	6
+  "7", "096D",  # DEVANAGARI DIGIT SEVEN;Nd;0;L;;7;7;7;N;;;;;          	7
+  "8", "096E",  # DEVANAGARI DIGIT EIGHT;Nd;0;L;;8;8;8;N;;;;;          	8
+  "9", "096F",  # DEVANAGARI DIGIT NINE;Nd;0;L;;9;9;9;N;;;;;           	9
+  "˚", "0970",  # DEVANAGARI ABBREVIATION SIGN;Po;0;L;;;;;N;;;;;       	˚
+  "İ", "0971",  # DEVANAGARI SIGN HIGH SPACING DOT;Lm;0;L;;;;;N;;;;;   	·
+  "â", "0972",  # DEVANAGARI LETTER CANDRA A;Lo;0;L;;;;;N;;;;;         	â
+  "ġ", "097B",  # DEVANAGARI LETTER GGA;Lo;0;L;;;;;N;;;;;              	ġ
+  "ĵ", "097C",  # DEVANAGARI LETTER JJA;Lo;0;L;;;;;N;;;;;              	ĵ
+  "ƒ", "097D",  # DEVANAGARI LETTER GLOTTAL STOP;Lo;0;L;;;;;N;;;;;     	ƒ
+  "ḋ", "097E",  # DEVANAGARI LETTER DDDA;Lo;0;L;;;;;N;;;;;             	ḋ
+  "B", "097F",  # DEVANAGARI LETTER BBA;Lo;0;L;;;;;N;;;;;              	B
+  "╳", "FEFF",  # BOM                                                  	╳
+  "×", "200D",  # ZERO-WIDTH JOINER                                    	×
+  "◆", "200C",  # ZERO-WIDTH NON-JOINER                                	◆
+  "»", "200E",  # LEFT-TO-RIGHT-MARK                                   	»
+);
+
+# check the map
+my %seen;
+foreach my $v (@map) {
+  die "Can't use our escape char '$escape_char' in the mapping."
+    if $v eq $escape_char;
+  die "Ambiguous: '$v'" if $seen{$v};
+  $seen{$v} = 1;
+}
+foreach my $v (@unmapped) {
+  die "Confict between mapped an unmapped: '$v'" if $seen{$v};
+}
+
+my %map = @map;
+my %unmapped = map { ($_, 1) } @unmapped;
+if ($digits_latin) {
+  foreach my $d (qw(0 1 2 3 4 5 6 7 8 9)) {
+    $unmapped{$d} = 1;
+  }
+}
+
+my %usemap;
+foreach my $k (keys %map) {
+  my $hex = $map{$k};
+  if ($inverse) {
+    $usemap{$k} = chr(hex($hex));
+  } else {
+    $usemap{chr(hex($hex))} = $k;
+  }
+}
+
+### Does not work.
+# sub mymap {
+#   return join("",
+#     map {
+#       my $c = chr($_);
+#       print $_, " ($c)\n";
+#       if ($c =~ /[- ,?]/) {
+#         $c;
+#       } elsif (defined $usemap{$_}) {
+#         $usemap{$_};
+#       } else {
+#         "$escape_char$c";
+#       }
+#     } unpack("U*", $_[0]));           # unpack Unicode characters
+# }
+ 
+sub map_char {
+  my $c = shift;
+  # my $o = ord($c);
+  # print $o, " ($c)\n";
+  return $c if $unmapped{$c};
+  return $usemap{$c} if defined $usemap{$c};
+  return $c if $dont_mark_originals;
+  return "$escape_char$c";
+}
+
+sub inverse_map_char {
+  my $c = shift;
+  return $1 if $c =~ /^$escape_char(.)$/o;
+  # my $o = ord($c);
+  # print $o, " ($c)\n";
+  return $c if $unmapped{$c};
+  return $usemap{$c} if defined $usemap{$c};
+  return $c;
+}
+
+while (<>) {
+  chomp;
+  # print mymap($_);
+  if ($inverse) {
+    s/($escape_char?.)/inverse_map_char($1)/ge;
+  } else {
+    s/(.)/map_char($1)/ge;
+  }
+  print;
+  print "\n";
+}
