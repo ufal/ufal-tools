@@ -1,0 +1,381 @@
+#!/usr/bin/perl
+# Prepares a shell script to run the given command on SGE or PBS and submits it
+
+use strict;
+use Getopt::Long qw(GetOptionsFromString);
+use File::Temp ();
+use File::Path;
+
+my $env = "ufal"; # SGE environment (used for option mapping)
+my $hostname = `hostname`;
+if ($hostname =~ /^cluster-cn-/i) {
+  $env = "rwth";
+} elsif ($hostname =~ /services-ufal/i) {
+  $env = "services-ufal";
+} elsif ($hostname =~ /cerit-sc/i) {
+  $env = "metacentrum";
+}
+
+my $engine = "ge"; # or pbs or console
+if ($env eq "metacentrum") {
+  $engine = "pbs";
+}
+
+my $jobname = "qsubmit";
+my $console = 0; # don't use qsub, run on console; outdated, use --engine=console
+my $logdir = undef;
+my $queue = undef;
+my $guess_queue = undef;
+my $sync = 0;
+my @holds = ();
+my $priority = -100; # qsubmit uses a lower priority by default
+my $exclude_comp = undef; # exclude a single computer
+my $mem = "6g"; # memory requirements
+my $gpumem = undef; # GPU memory requirements
+my $gpus = undef; # number of GPUs to request
+my $cores = undef; # number of CPU cores to allocate
+my $disk = undef; # informative temp disk requirements
+my $time = undef; # time limit
+
+my @optionspecs = (
+  "engine=s"=>\$engine,
+  "console"=>\$console,
+  "sync"=>\$sync,
+  "queue=s"=>\$queue,
+  "guess-queue=s"=>\$guess_queue, # run this to get queue name
+  "jobname=s"=>\$jobname,
+  "logdir=s"=>\$logdir, # where to put the logfile
+  "exclude-comp=s"=>\$exclude_comp,
+  "hold=s"=>\@holds, # repeat for more IDs, or use commas/spaces to delimit IDs
+  "priority=i"=>\$priority,
+  "gpumem:s"=>\$gpumem, # set e.g. to 8g, implies gpu-*.q at UFAL
+  "gpus=i"=>\$gpus, # set e.g. to 8g, implies gpu-*.q at UFAL
+  "mem:s"=>\$mem, # set e.g. to 10m or 4g; set to '' to run with no limits
+    # but risk killing the machine
+  "cores=i"=>\$cores, # number of CPU cores to allocate at the node
+  "disk=s"=>\$disk, # format: 10g
+  "time=s"=>\$time, # format: hh:mm:ss
+);
+
+# use default options, if available
+my $default_opt_file = "$ENV{HOME}/.qsubmitrc";
+if (-e $default_opt_file) {
+  my $h = my_open($default_opt_file);
+  my $defaultoptstr = "";
+  while (<$h>) {
+    next if /^\s*#/;
+    $defaultoptstr .= $_;
+  }
+  close $h;
+  my $showdefaultoptstr = $defaultoptstr;
+  $showdefaultoptstr =~ s/[\n\s]+/ /g;
+  print STDERR "Loading default options from $default_opt_file: $showdefaultoptstr\n";
+  GetOptionsFromString($defaultoptstr, @optionspecs)
+    or die "Bad options in $default_opt_file";
+}
+
+# add options from command line
+GetOptions(@optionspecs) or exit 1;
+
+# validate options
+die "Bad queing engine '$engine', accepted are: ge, pbs, console"
+  if $engine ne "pbs" && $engine ne "ge" && $engine ne "console";
+
+if ($console) {
+  print STDERR "Deprecated --console for qsubmit. Use --engine=console instead.\n";
+  $engine = "console";
+}
+
+my $cmd = shift;
+
+die "Usage: qsubmit cmd" if !$cmd;
+
+
+my $timediff = "$ENV{HOME}/tools/shell/timediff";
+$timediff = "~bojar/tools/shell/timediff" if ! -x $timediff;
+
+my $pwd = `pwd`; chomp $pwd;
+my $tmp = new File::Temp(
+  DIR => $pwd,
+  UNLINK => 0, # the script will delete itself after it has been completed
+  TEMPLATE=>'.qsubmit-XXXXXX',
+  SUFFIX => '.bash' );
+
+my $cmdescaped = $cmd;
+$cmdescaped =~ s/'/'"'"'/g;
+
+if ($env eq "metacentrum") {
+  # metacentrum does not show log files until job is completed, reveal them
+  # through tee
+  $cmd = "( $cmd ) 2>&1 | tee \$PBS_JOBNAME.o\$PBS_JOBID.livelog\nexitstatus=\${PIPESTATUS[0]}";
+} else {
+  # standard direct running of the job, and collecting exit status
+  $cmd = "$cmd\nexitstatus=\$?\n";
+}
+
+# getting various details about the job
+my $usagecmd;
+my $resourcescmd;
+my $maxmemcmd;
+if ($engine eq "pbs") {
+  $usagecmd="qstat -f \$PBS_JOBID | sed -n 's/  *//g;s/^resources_used.//p' | tr '\\n' ',' | sed 's/,\$//'";
+  $resourcescmd="qstat -f \$PBS_JOBID | grep -v Resource_List.processed_nodes | sed -n 's/  *//g;s/^Resource_List.//p' | tr '\\n' ',' | sed 's/,\$//'";
+  $maxmemcmd="qstat -f \$PBS_JOBID | sed -n 's/^ *resources_used.mem *= *//p'";
+} else {
+  # sge
+  $usagecmd="qstat -j \$JOB_ID | grep \"^usage\" | cut -b 29-";
+  $resourcescmd="qstat -j \$JOB_ID | grep -e '^hard resource_list' | cut -d ' ' -f 11-; echo NSLOTS=\$NSLOTS";
+    # we ignore 'soft resource_list'
+  $maxmemcmd="qstat -j \$JOB_ID | grep -e '^usage' | cut -f 5 -d, | cut -d = -f 2";
+}
+
+
+
+my $script = << "KONEC"
+#!/bin/bash
+
+# load UFAL SGE profile, if exists
+[ -e /net/projects/SGE/user/sge_profile ] \\
+  && . /net/projects/SGE/user/sge_profile
+
+hard=\$($resourcescmd)
+
+sdate=`date`
+
+echo "=============================="
+echo "== Server:    "`hostname`
+echo "== Directory: "`pwd`
+echo '== Command:   $cmdescaped'
+echo "== Hard res:  \$hard"
+echo "== Started:   \$sdate"
+echo "== Sourcing:  \$HOME/\.bashrc"
+echo "=============================="
+
+# Source the bashrc
+. \$HOME/.bashrc
+
+# Renice ourselves
+renice 10 \$\$
+
+# Run the command and collect exit status
+$cmd
+
+if [ 0 != "\$exitstatus" ]; then
+  exitinfo="FAILED (exit status \$exitstatus)"
+fi
+
+fdate=`date`
+
+# remove this temporary script
+rm $tmp
+
+# print all we know about ourselves
+#qstat -j \$JOB_ID
+
+echo "Getting usage and peak mem info (works for SGE, not PBS yet)"
+usage=\$($usagecmd)
+maxvmem=\$($maxmemcmd)
+
+echo "=============================="
+echo "== Server:    "`hostname`
+echo "== Directory: "`pwd`
+echo '== Command:   $cmdescaped'
+echo "== Usage:     \$usage"
+echo "== Peak mem:  \$maxvmem"
+echo "== Started:   \$sdate"
+echo "== Finished:  \$fdate     \$exitinfo"
+echo "== Duration:  "`$timediff --both "\$sdate" "\$fdate"`
+echo "=============================="
+
+KONEC
+;
+
+print $tmp $script;
+close $tmp;
+
+# debugging: print the script
+# print $script;
+
+# foreground execution:
+# safesystem(("/bin/bash", $tmp));
+
+if (defined $logdir) {
+  if (! -d $logdir) {
+    mkpath($logdir) or die "Failed to create logdir '$logdir'.";
+  }
+  -w $logdir or die "Logdir '$logdir' not writeable.";
+}
+
+my @opts = ();
+if (defined $jobname) {
+  $jobname =~ s/\//_/g; # no slashes allowed in jobnames
+  $jobname =~ s/^\.+//g; # remove leading dots
+  push @opts, ("-N", $jobname);
+}
+if (defined $logdir) {
+  push @opts, ("-o", $logdir.'/$JOB_NAME.o$JOB_ID');
+  # we use -o, because we always join stdout and stderr
+}
+if ($sync) {
+  push @opts, ("-sync", "yes");
+}
+
+my $queue_needed = undef;
+# using GPU flags implies gpu-*.q queue
+
+# asking for gpus or gpumem implies gpu-*.q queue
+if (defined $gpumem or (defined $gpus and $gpus ne "")) {
+  if ($env eq "rwth" || $env eq "services-ufal") {
+    print STDERR "eman: Cannot ask for GPU mem at $env.\n" if defined $gpumem;
+    $queue_needed = "gpu.q";
+  } else {
+    # UFAL setup
+    push @opts, ('-l', "gpu_ram=".$gpumem) if defined $gpumem;
+    # at UFAL, asking for gpumem implies gpu-*.q queue
+    $queue_needed = "gpu-*.q";
+  }
+}
+
+# Merging of queue specifications; they can come from 3 sources:
+# --queue explicitly given, use this
+# --guess-queue ... user asks us to guess the queue
+# queue_needed  ... the gpu options demand some queue
+if (defined $queue && defined $guess_queue) {
+  print STDERR "Given both --queue and --guess-queue, we ignore --guess-queue\n";
+  $guess_queue = undef;
+}
+my $queue_needed_regex = $queue_needed;
+$queue_needed_regex =~ s/\*/.*/g;
+if (defined $queue_needed && defined $queue && $queue !~ /$queue_needed_regex/) {
+  die "You specified queue '$queue' but your other options demand '$queue_needed' (tested if '$queue' =~ /$queue_needed_regex/)";
+}
+if (not defined $queue and (defined $guess_queue || defined $queue_needed)) {
+  if (defined $queue_needed) {
+    $queue = $queue_needed;
+  } else {
+    $queue = `$guess_queue`; chomp $queue;
+  }
+  print STDERR "Guessed queue: $queue\n";
+}
+if (defined $queue && $queue ne "") {
+  push @opts, ("-q", $queue);
+  if ($queue =~ /gpu/ && !defined $gpus) {
+    $gpus = 1;
+    print STDERR "GPU queue will be used, assuming --gpus=1, i.e. one GPU needed.\n";
+  }
+}
+
+if (defined $gpus and $gpus ne "") {
+  if ($env eq "rwth" || $env eq "services-ufal") {
+    print STDERR "eman: Cannot ask for GPU cores at $env.\n";
+  } else {
+    # UFAL setup
+    push @opts, ('-l', "gpu=".$gpus);
+  }
+}
+
+if (defined $exclude_comp) {
+  die "Cannot use --queue and --exclude-comp at the same time"
+    if defined $queue;
+  push @opts, ("-q", "*@*&!$exclude_comp");
+}
+
+if (defined $time) {
+  if ($env eq "metacentrum") {
+    push @opts, ('-l', "walltime=".$time);
+  } else {
+    # UFAL setup
+    push @opts, ('-l', "h_rt=".$time);
+  }
+}
+if (defined $cores) {
+  die "Bad specification of --cores: $cores" if $cores <1;
+  if ($cores > 1) {
+    if ($env eq "rwth") {
+      push @opts, ('-pe', 'smp', $cores); # untested
+    } elsif ($env eq "metacentrum") {
+      # options in PBS format!
+      push @opts, ('-l', 'nodes=1:ppn='.$cores);
+    } else {
+      # UFAL setup
+      push @opts, ('-pe', 'smp', $cores);
+    }
+  }
+}
+if (defined $mem && $mem ne "") {
+  if ($env eq "rwth") {
+    push @opts, ('-hard', '-l', "h_vmem=".$mem);
+  } elsif ($env eq "metacentrum") {
+    # options in PBS format!
+    push @opts, ('-l', "mem=".$mem);
+  } else {
+    # UFAL setup
+    push @opts, ('-hard', '-l', "mf=".$mem); # current free
+    push @opts, ('-hard', '-l', "h_data=".$mem); # and also consumable
+  }
+}
+if (defined $disk) {
+  if ($env eq "rwth") {
+    die "Unsupported -disk at rwth.";
+  } else {
+    # UFAL setup
+    push @opts, ('-hard', '-l', "mnthf=".$disk);
+  }
+}
+
+push @opts, ( map { ("-hold_jid", $_) } grep { /\d/ } map { (split /[ ,"]+/, $_) } @holds );
+
+if ($engine eq "ge") {
+  # qsub execution
+  safesystem((qw(qsub -j y -cwd -S /bin/bash), "-p", $priority, @opts, $tmp));
+} elsif ($engine eq "pbs") {
+  # qsub execution
+  my $cwd = `pwd`; chomp $cwd;
+  safesystem((qw(qsub -j oe -d), $cwd, qw(-S /bin/bash), "-p", $priority, @opts, $tmp));
+} elsif ($engine eq "console") {
+  # execution on the console
+  safesystem((qw(/bin/bash), $tmp)) or die;
+} else {
+  die "Nonsense! Unsupported engine '$engine'"
+}
+
+
+
+sub safesystem {
+  print STDERR "Executing: @_\n";
+  system(@_);
+  if ($? == -1) {
+      print STDERR "Failed to execute: @_\n  $!\n";
+      exit(1);
+  }
+  elsif ($? & 127) {
+      printf STDERR "Execution of: @_\n  died with signal %d, %s coredump\n",
+          ($? & 127),  ($? & 128) ? 'with' : 'without';
+      exit(1);
+  }
+  else {
+    my $exitcode = $? >> 8;
+    print STDERR "Exit code: $exitcode\n" if $exitcode;
+    return ! $exitcode;
+  }
+}
+
+sub my_open {
+  my $f = shift;
+  die "Not found: $f" if ! -e $f;
+
+  my $opn;
+  my $hdl;
+  my $ft = `file $f`;
+  # file might not recognize some files!
+  if ($f =~ /\.gz$/ || $ft =~ /gzip compressed data/) {
+    $opn = "zcat $f |";
+  } elsif ($f =~ /\.bz2$/ || $ft =~ /bzip2 compressed data/) {
+    $opn = "bzcat $f |";
+  } else {
+    $opn = "$f";
+  }
+  open $hdl, $opn or die "Can't open '$opn': $!";
+  binmode $hdl, ":utf8";
+  return $hdl;
+}
