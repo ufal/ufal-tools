@@ -3,6 +3,22 @@
 # Derived from eman seed for marian (http://ufal.mff.cuni.cz/eman)
 # Ondrej Bojar and Josef Jon
 # vim: tabstop=2 expandtab
+#
+# Usage:
+#   Step 1: run it with one parameter, a name for a new directory where Marian should be installed
+#      ./marian-installer.sh ondrejs-marian-installation
+#      # this will create ondrejs-marian-installation/ and within that a script called "guessmarian"
+#
+#   Step 2: use guessmarian, the wrapper which selects the appropriate compilation for the current architecture
+#      # this guessmarian wrapper is created for all useful Marian binaries, i.e:
+#      ./ondrejs-marian-installation/guessmarian -h
+#      ./ondrejs-marian-installation/guessmarian-decoder -h
+#      ./ondrejs-marian-installation/guessmarian-scorer -h
+#   Possible Step 3: If you try running this on some new architecture, guessmarian will complain that
+#      # no binaries were compiled for that architecture.
+#      # All you need to do is to run the following on the problematic architecture:
+#      cd ondrejs-marian-installation
+#      ./compile-again-for-this-architecture.sh
 
 
 marianrepo=https://github.com/marian-nmt/marian-dev.git
