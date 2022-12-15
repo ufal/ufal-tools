@@ -2,14 +2,15 @@
 
 These are assorted shell tools for natural language processing, machine
 translation, grid computing.
-All of them should be self-contained.
+All of them should be self-contained and worth sharing to all UFAL members.
 
 The tools *may* depend on the network environment of UFAL, but whenever possible, they should check for the environment and die if they are run elsewhere.
 
 They also ideally should support AIC or Metacentrum.
 
-Example:
+If the tool belongs to the above mentioned class, but has its own repository, it should be linked from here:
 
-```
-./qswrapper gpu-troja.q@tdll2 3 'echo ahoj'
-```
+- https://github.com/ufal/qsubmit
+
+
+Notice also 'obsolete/' dir.
