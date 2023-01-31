@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<title>testing template</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<nav>
+  <h1><a href="{{ url_for('index') }}" >Link</a> to INDEX view</h1>
+  <h1><a href="{{ url_for('second') }}" >Link</a> to SECOND view</h1>
+</nav>
+<section>
+  <p>{{ message }}</p>
+</section>
