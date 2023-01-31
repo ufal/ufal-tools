@@ -1,30 +1,30 @@
-# Running Flask under subpath at domain
+# Running Flask under subpath/URL prefix at domain
 
-At UFAL we run a demo projects URLs with this template http://DOMAIN/MACHINE_NAME/YOUR_APP_NAME 
+At UFAL we run demo projects URLs with a template `http://DOMAIN/MACHINE_NAME/YOUR_APP_NAME`
 e.g. http://quest.ms.mff.cuni.cz/rel2text/tabgenie.
 
 From a developer perspective it means that:
 - There is a single Apache Proxy which routes the requests to different machines and you cannot influence at all.
-- There is an Apache Proxy server which receives requests which routes your application from a subpath to localhost and
-  ports which do not require sudo e.g. 5000.
-- **From a Flask developer it means that URLs links do NOT work out of the box. The prefix `/rel2text/tabgenie` is needed: `<a href="/rel2text/tabgenie/XY">Show XY</a>` instead of `<a href="/XY"> Show XY</a>`
+- There is an Apache Proxy server which receives requests that route your application from a URL prefix to localhost using 
+  a port which does not require sudo e.g. port 5000.
+- **From a Flask developer perspective, it means that URLs links do NOT work out of the box. The prefix `/rel2text/tabgenie` is needed: `<a href="/rel2text/tabgenie/XY">Show XY</a>` instead of `<a href="/XY"> Show XY</a>`**
 
 
-Luckily, subpath deployment could be automated using Flask using correct reverse proxy setup (in Apache), wsgi handling
+Luckily, URL prefix deployment could be automated using Flask using correct reverse proxy setup (in Apache), wsgi handling
 and using recommended practices in Flask.
 
 ## Apache Setup on the deployment machine
-It is important to re-add the stripped subpath back to the address.
+It is important to re-add the stripped URL prefix back to the address.
 ```
 # This configuration belongs to Apache Server running on the rel2text machine.
-# rel2text subpath was stripped on the first Apache proxy delegating traffic to different machines.
+# rel2text URL prefix was stripped on the first Apache proxy delegating traffic to different machines.
 
 ProxyPass /tabgenie http://127.0.0.1:5000/rel2text/tabgenie
 ProxyPassReverse /tabgenie http://127.0.0.1:5000/rel2text/tabgenie
 ```
 
 ## WSGI compatible deployment
-The SCRIPT_NAME variable is responsible for informing the wsgi application about the subpath.
+The SCRIPT_NAME variable is responsible for informing the wsgi application about the URL prefix.
 
 ```
 cd src  
@@ -44,7 +44,7 @@ Among other places it is important to use it at:
 
 
 ## Installation
-Recommended installation and deployment
+Recommended installation and deployment is:
 ```
 python3 -m venv venv && \
   source venv/bin/activate && \
