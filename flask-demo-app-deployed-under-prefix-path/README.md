@@ -30,8 +30,11 @@ The SCRIPT_NAME variable is responsible for informing the wsgi application about
 cd src  
 # production deployment
 SCRIPT_NAME=/rel2text/tabgenie gunicorn app:app --bind 127.0.0.1:5000
-# Flask development server by defaults run on 127.0.0.1 and port 5000
-FLASK_APP=app SCRIPT_NAME=/rel2text/tabgenie flask run
+
+# 
+# WARNING THIS DOES NOT WORK -- use e.g. ngrok for local development on quest 
+# Flast development server ignores SCRIPT_NAME
+# FLASK_APP=app SCRIPT_NAME=/rel2text/tabgenie flask run
 ```
 
 ## Flask automatic URL creation
@@ -55,7 +58,7 @@ python3 -m venv venv && \
 
 
 ### References
-- https://dlukes.github.io/flask-wsgi-url-prefix.html
+- [1] https://dlukes.github.io/flask-wsgi-url-prefix.html
 
 
 Note2: This minimal application was tested on namuddis machine on demo which is not ready to receive public attention :).
