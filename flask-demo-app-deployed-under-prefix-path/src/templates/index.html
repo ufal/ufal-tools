@@ -1,6 +1,11 @@
 <!DOCTYPE html>
-<title>testing template</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Testing template</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
 <nav>
   <h1><a href="{{ url_for('index') }}" >Link</a> to INDEX view</h1>
   <h1><a href="{{ url_for('second') }}" >Link</a> to SECOND view</h1>
@@ -8,3 +13,17 @@
 <section>
   <p>{{ message }}</p>
 </section>
+<div id="div1"></div>
+<script charset="utf-8">
+window.onload = function () {
+  api_time_url = 'http://' + document.domain + {{ url_for("time")|tojson }}
+  console.log("fetch " + api_time_url)
+  fetch(api_time_url).then(response => response.json()).then(data => {
+      new_msg = data.hostname + ' ' + data.timestamp;
+      console.log(new_msg);
+      document.getElementById("div1").innerHTML = new_msg;
+    }
+  )
+}
+</script>
+</html>
