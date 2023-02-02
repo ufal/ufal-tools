@@ -12,5 +12,8 @@ If the tool belongs to the above mentioned class, but has its own repository, it
 
 - https://github.com/ufal/qsubmit
 
+- ziplines: https://www1.cuni.cz/~obo/textutils/ziplines 
 
-Notice also 'obsolete/' dir.
+- Ondřej Bojar's Missing Textutils: https://www1.cuni.cz/~obo/textutils/ 
+
+Notice also `obsolete/` dir.
