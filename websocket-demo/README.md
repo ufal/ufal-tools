@@ -2,15 +2,15 @@
 
 ## Installation
 
-1. ssh to `quest.ms.mff.cuni.cz` and to `namuddis`
-2. create Python3 virtual env `python3 -m venv venv` and activate it for your shell `source ./venv/bin/activate`
+1. Ssh to `quest.ms.mff.cuni.cz` and to `namuddis`
+2. Create Python 3 virtual environment `python3 -m venv venv` and activate it for your shell `source ./venv/bin/activate`.
 3. Install requirements `pip install -r requirements.txt`
 
 ## Testing
-Please following installation before testing.
+Please, install requirements before testing.
 
 ### Local deployment and testing
-Open two terminals on `namuddis` and tests that local websocket connections work fine
+Open two terminals on `namuddis` and test that local websocket connections work fine.
 
 ```
 # terminal 1 on namuddis
@@ -50,9 +50,9 @@ $ python client.py local
 < data from server 1675418171.6871643
 ```
 
-### Server on namuddis and client on notebook connecting from public internet
-Open two terminal. The terminal with server on namuddis exactly the same as in local deployment.
-The second terminal with client should be at your local machine connecting from public internet.
+### Test the server on namuddis but the client on a notebook connecting from public Internet
+Open two terminals. The terminal with server on namuddis is deployed exactly the same as for local deployment.
+The second terminal with the client should be at your local machine connecting from public internet.
 The client is trying to connect to  `ws://quest.ms.mff.cuni.cz/namuddis/ws-test/echo`
 
 Note: in order the client to work, perform the same installation as you did on `namuddis`.
