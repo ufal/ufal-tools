@@ -1,0 +1,171 @@
+----------------------------------------------------------------
+----------------------------------------------------------------
+runG2P
+------------------
+Description: This web service converts an orthographic text input into a canonical phonological transcript (standard pronunciation). G2P (short for 'grapheme to phoneme conversion') reads a continuous text or word list, and estimates the most likely string of phonemes that a standard speaker of that language is expected to articulate. G2P uses statistically trained decision trees and some more tricks like Part-of-speech tagging and morphological segmentation to improve the decision process. Each language version of G2P is trained on a large set of pronunciations from this language (a pronunciation dictionary) or is based on a letter-sound mapping table in case of simple unique correspondences. The way G2P operates depends on numerous options and the chosen input and output format. For instance, some input formats contain non-tokenized text (e.g. txt) that will be subject to tokenisation and normalisation, while others contain already tokenized text (list,bpf) that will be processed as is. Most output formats also come in an 'extended' version (indicated by a 'ext' in the format name, e.g. 'exttab') that lists more information than the the phonemic transcript; extended output is only avaliable for a small subset of language yet. For more detailed information about the methods G2P applies please refer to: Reichel, U.D. (2012). PermA and Balloon: Tools for string alignment and text processing, Proc. of the Interspeech. Portland, Oregon, paper no. 346.
+
+Example curl call is:
+curl -v -X POST -H 'content-type: multipart/form-data' -F com=no -F tgrate=16000 -F stress=no -F imap=@<filename> -F lng=deu-DE -F lowercase=yes -F syl=no -F outsym=sampa -F nrm=no -F i=@<filename> -F tgitem=ort -F align=no -F featset=standard -F iform=txt -F except=@<filename> -F embed=no -F oform=bpf 'https://clarin.phonetik.uni-muenchen.de/BASWebServices/services/runG2P'
+
+Parameters:  [com] [tgrate] [stress] [imap] [lng] [lowercase] [syl] [outsym] [nrm] i [tgitem] [align] [featset] [iform] [except] [embed] [oform]
+
+Parameter description: 
+com: [yes, no] 
+yes/no decision whether <*> strings should be treated as annotation
+                markers. If set to 'yes', then strings of this type are considered as annotation markers that are not
+                processed but passed on to the output. The string * within the <*> 
+                must not contain any white space characters.
+                For oform='bpf' this means, that the markers appear in the ORT
+                and KAN tier with a word index on their own. WebMAUS makes use of the markers < usb > (e.g.
+                non-understandable word or other human noises) and < nib > (non-human noise)
+                without the blanks between "usb", "nib" and the brackets "<" and ">" (which are
+                needed for formatting reasons). All other markers <*> are modelled as silence, if you
+                use runG2P for WebMAUS. Markers must not contain white spaces, and must be separated from word tokens
+                by blanks. They do not need to be blank-separated from non-word tokens as punctuation.
+
+tgrate: [0.0, 999999.0] 
+Signal sampling rate: only needed, if 'iform' ('Input format') is 'tg' and 'oform' ('Output format') is 'bpf(s)'. 
+                Sample rate of the corresponding speech signal; needed to
+                convert time values from TextGrid to sample values in BAS Partitur Format (BPF) file.
+                If you don't know the sample rate, look in the Properties/Get Info list of the sound file.
+
+stress: [yes, no] 
+yes/no decision whether or not word stress is to be added to the canonical
+                transcription (KAN tier). Stress is marked by a single apostroph (') that is inserted before the syllable nucleus 
+                into the transcription.
+
+imap: Customized mapping table from orthography to phonology. If the option 'lng' ('Language') is set to 'und' ('User defined'), 
+                a G2P mapping table must be provided via this option. This mapping table is used then to translate the input text into phonological symbols. 
+                See http://www.bas.uni-muenchen.de/Bas/readme_g2p_mappingTable.txt for details about the format of the mapping table.
+
+lng: [cat, deu, eng, fin, hat, hun, ita, mlt, nld, nze, pol, aus-AU, afr-ZA, sqi-AL, eus-ES, eus-FR, cat-ES, cze-CZ, nld-NL, eng-US, eng-AU, eng-GB, eng-NZ, ekk-EE, fin-FI, fra-FR, kat-GE, deu-DE, gsw-CH-BE, gsw-CH-BS, gsw-CH-GR, gsw-CH-SG, gsw-CH-ZH, gsw-CH, hat-HT, hun-HU, isl-IS, ita-IT, jpn-JP, gup-AU, ltz-LU, mlt-MT, nor-NO, fas-IR, pol-PL, ron-RO, rus-RU, slk-SK, spa-ES, swe-SE, tha-TH, guf-AU, und] 
+Language: RCFC5646 locale code of the processed text; defines the phoneme set of input and output; we use the RFC5646 sub-structure 'iso639-3 - iso3166-1 [ - iso3166-2], e.g. 'eng-US' for American English, 'deu-AT-1' for Austrian German spoken in
+                'Oberoesterreich'; the code 'und' ('User defined') allows the user to upload a customized 
+                mapping from orthographic to phonologic form (see option '-imap'); for backwards compatibility some older non-standard codes are
+                still supported: 'nze' stands for New Zealand English, 'use' for American English. Special languages: 'gsw-CH' denotes
+                text written in Swiss German 'Dieth' transcription (https://en.wikipedia.org/wiki/Swiss_German); 
+                'jpn-JA' (Japanese) accepts Kanji or Katakana or a mixture of both, but the tokenized output will contain only the Katakana version of the input;
+                'aus-AU' (Australian Aboriginal languages, including Kunwinjku, Yolnu Matha) accept so called 'Modern Practical Orthography' 
+                (https://en.wikipedia.org/wiki/Transcription_of_Australian_Aboriginal_languages);
+                'fas-IR' (Persian) accepts a romanized version of Farsi developped by Elisa Pellegrino and Hama Asadi (see ... for details).
+
+lowercase: [yes, no] 
+yes/no decision whether orthographic input is treated case sensitive (no) or not (yes). Applies only, if the option 'lng' is set to 'und' and a customized mapping table is loaded via option 'imap'.
+
+syl: [yes, no] 
+yes/no decision whether or not the output transcription is to be syllabified.
+                Syllable boundaries '.' are inserted into the transcription with separating blanks.
+
+outsym: [sampa, x-sampa, maus-sampa, ipa, arpabet] 
+Ouput phoneme symbol inventory. The language-specific SAMPA variant is the default. Alternatives are: language independent X-SAMPA, MAUS-SAMPA, IPA and ARPABET. MAUS-SAMPA maps the output to a language-specific phoneme subset that WEBMAUS can process. ARPABET is supported for eng-US only.
+
+nrm: [yes, no] 
+Text normalization. Currently available for German and English variants only.
+                Detects and expands 22 non-standard word types. All output file types supported but
+                not available for the following tokenized input types: bpf, TextGrid, and tcf. If
+                switched off, only number expansion is carried out.
+
+i: Orthographic text or annotation of the utterance to be converted; encoding must be UTF-8; formats are defined in option 'iform'. Continuous text input undergoes several text normalization stages resulting in a tokenized word chain that repesents the most likely spoken utterance (e.g. numbers are converted into their full word forms). See the webservice help page of the Web interface for details: https://clarin.phonetik.uni-muenchen.de/BASWebServices/interface/Grapheme2Phoneme. Special languages: Thai, Russian and Georgian expect their respective standard alphabets; Japanese allows Kanji or Katakana or a mixture of both, but the tokenized output will contain only the Katakana version of the input; Swiss German expects input to be transcribed in 'Dieth'; Australian Aboriginal languages (including Kunwinjku, Yolnu Matha) expect so called 'Practical Orthography'.
+
+tgitem: TextGrid tier name: only needed, if 'iform' ('Input format') is 'tg'. Name of the TextGrid tier (item), that contains
+                the words to be transcribed. In case of TextGrid output, this tier is the reference tier for the added
+                tiers.
+
+align: [yes, no, maus] 
+yes/no/sym decision whether or not the transcription is to be
+                letter-aligned. Examples: if align is set to 'yes' the transcription for 'archaeopteryx' is 'A: _ k _ _
+                I Q p t @ r I k+s', i.e. 'ar' is mapped to 'A: _', and 'x' to 'k+s'. If contained in the output,
+                syllable boundaries and word stress are '+'-concatenated with the preceeding, resp. following symbol.
+                'sym' causes a special symmetric alignment which is needed e.g. for MAUS rule training, i.e. word: a r
+                c h a e o p t e r y x _; transcription: A: _ k _ _ I Q p t @ r I k s. Syllable boundaries and word
+                stress are not part of the output of this 'sym' alignment. For the output formats 'tab', 'exttab',
+                'lex', and 'extlex' also the aligned orthography is letter-splitted to account for multi-character
+                letters in languages as Hungarian.
+
+featset: [standard, extended] 
+Feature set used for grapheme-phoneme conversion. The standard set is the
+                default and comprises a letter window centered on the grapheme to be converted. The extended set
+                additionally includes part of speech and morphological analyses. The extended set is currently
+                available for German and British English only. For connected text the extended feature set generally
+                generally yields better performance. However, if the input comprises a high amount of proper names
+                provoking erroneous part of speech tagging and morphologic analyses, than the standard feature set is
+                more robust.
+
+iform: [txt, bpf, list, tcf, tg] 
+Accepted input formats for grapheme phoneme conversion: 'txt' indicates
+                normal text input, which will be tokenized before the conversion. 'list' indicates a sequence of
+                unconnected words, that does not need to be tokenized. Furthermore, 'list' requires a different
+                part-of-speech tagging strategy than 'txt' for the extraction of the 'extended' feature set (see
+                Parameter 'featset'). 'tcf' indicates, that the input format is TCF containing at least a tokenization
+                dominated by the element 'tokens'. 'tg' indicates TextGrid input. Long and short format is supported.
+                For TextGrid input additionally the name of the item containing the words to be transcribed is to be
+                specified by the parameter 'tgname'. In combination with 'bpf' output format 'tg' input additionally
+                requires the specification of the sample rate by the parameter 'tgrate'. Input format 'bpf' indicates
+                BAS partitur file input containing an ORT tier to be transcribed.
+                -------------------------
+                Connected input text ('txt') will be (word-)tokenized and (partially) normalized before it is converted into phonemic symbols. In the following we list the most important conversions done on the text input:
+                - all non-alphanumeric characters (including '$' and '€') are deleted, except '-', '.' and ',' in connection with digits. 
+                - all forms of single apostrophes are deleted, except for the languages ita, fra and ltz, in which d' D' l' L' preceeding a word (e.g. l'aqua) are split from the word and treated as extra tokens (e.g. l'aqua will be l' + aqua); note that there are many more cases of apostrophe usage where this split is not done. 
+                - other punctuations and brackets: are deleted. 
+                - if option 'Keep annotation = yes': expressions within '<>' brackets are protected and passed as is to the output, e.g. '<Lachen>' will appear as '<Lachen>' in the phonemic transcription. White space characters (blanks, tabs etc.) are not allowed within the '<>' brackets; if they are necessary, replace them with '_'. 
+                - numerals: are converted into number words, e.g. '5' --> 'five', '12' --> twelve, '23' --> 'twenty-three'. 
+                - single small and capital characters: are spelled out, e.g. 'b C g' --> /bi: zi: dZi:/. 
+                - strings of capital characters: are spelled out, e.g. 'USA' --> /ju:eseI/. 
+                If option 'Text normalization = yes' the following extra rules apply (only for languages deu-DE and eng-GB): 
+                - Many special characters such as '$' '€' '£' etc. are spelled out as 'Dollar' 'Euro' 'Pfund/Pound'. Often this depends on the context, e.g. a '.' can be translated as 'dot' within an URL but ignored otherwise. 
+                - special characters that can be expanded: % & $ § @ = € £ ₤ ¼ ½ ¾ © ° + < > ≤ ≥ - characters ² ³ , . / \ : _ ~ are sometimes expanded in special contexts of equations, units, URLs etc. 
+                - special numeric expressions such as date, time, amounts, ordinal numbers are translated correctly, e.g. '5. January 1923' --> 'fifth January nineteen-twentythree', '23€' --> 'twentythree Euro', '$30' --> 'thirty dollars', 'Clemens X' --> 'Clemens tenth', '10:15' --> 'a-quarter-past-ten'. 
+                - strings of capital characters that can be pronounced as words ('acronyms') sometimes are not spelled but spoken as a word: 'ESSO' --> /?E:sO/. 
+                Since plain text files can have different encodings, BOMs, line terminators etc., it is highly recommended to run input text files through the service 'TextEnhance' before feeding them into G2P (the 'Pipeline' services do that automatically); this service also allows the correct bracketing of linguistic markers and comment lines so that they can be passed through the pipeline and are not interpreted as being spoken. 
+                Special languages: Thai, Russian and Georgian expect their respective standard alphabets; Japanese allows Kanji or Katakana or a mixture of both, but the tokenized output will contain only the Katakana version of the input; Swiss German expects input to be transcribed in 'Dieth' (https://en.wikipedia.org/wiki/Swiss_German); Australian Aboriginal languages (including Kunwinjku, Yolnu Matha) expect so called 'Modern Practical Orthography' (https://en.wikipedia.org/wiki/Transcription_of_Australian_Aboriginal_languages); Persian accepts a romanized transcript developped by Elisa Pellegrino and Hama Asadi (see ... for details). 
+                
+
+except: name of an exception dictionary file overwriting the g2p output. Format: 2 semicolon-separated columns 'word; transcription (in X-SAMPA). Phonemes blank-separated. Example: sagt;z ' a x t.
+
+embed: [no, maus] 
+Macro option for embedding G2P into WEBMAUS. If set to 'maus', it overwrites
+                several basic options as follows: 'stress', 'syl', and 'align' are set to 'no'. 'oform' is set to 'bpfs'. 'outsym' is set to 'maus-sampa'.
+                Small single letters are transcribed as word fragments instead of spelling.
+
+oform: [txt, tab, exttab, lex, extlex, bpf, bpfs, extbpf, extbpfs, tcf, exttcf, tg, exttg] 
+Output format: 'bpf' indicates the BAS Partitur Format (BPF) file with an ORT/KAN tier. The
+                tiers contains a table with 3 columns and one line per word in the input. Column 1 is always 'ORT:/KAN:';
+                column 2 is an integer starting with 0 denoting the word position within the input; column 3 contains
+                for ORT the (possibly normalized) orthographic word, for KAN the canonical pronunciation of the word coded in 
+                SAM-PA (or IPA); the latter does not contain blanks. 'bpfs'
+                differs from 'bpf' only in that respect, that the phonemes in KAN are separated by blanks. In case of TextGrid
+                input, both 'bpf' and 'bpfs' require the additional parameters 'tgrate' and 'tgitem'. Additionally, the content of
+                the TextGrid tier 'tgitem' is stored as a word chunk segmentation in the BPF tier TRN. 'extbpf' or
+                'extbpfs' extend the BPF output file by the tiers POS (part of speech, STTS tagset), KSS (full phonemic 
+                transcript including e.g. lexical accent), TRL (orthographic transcript with punctuation), and MRP (morph
+                segmentation and classes). 'txt'
+                cause a replacement of the input words by their phonemic transcriptions; single line output without
+                punctuation, where phonemes are separated by blanks and words by tabulators. 'tab' returns the grapheme
+                phoneme conversion result in form of a table with two columns. The first column comprises the words,
+                the second column their blank-separated transcriptions. 'exttab' results in a 5-column table. The
+                columns contain from left to right: word, transcription, part of speech, morpheme segmentation, and
+                morpheme class segmentation. 'lex' transforms the table to a lexicon, i.e. words are unique and
+                sorted. 'extlex' provides the same information as 'exttab' in a unique and sorted manner. For all lex
+                and tab outputs columns are separated by ';'. If option 'align' is switched on, the first (word) column is
+                letter-segmented. 'tcf' creates either a tcf output file from scratch (in case iform
+                is not 'tcf'), or a transcription tier is added to the input tcf file. If a tcf file is generated
+                from scratch, it contains the elements 'text', 'tokens', and 'BAS_TRS' for the phonemic transcription. 
+                oform 'exttcf' additionally adds the elements 'BAS_POS' (part of speech, STTS tagset), 'BAS_MORPH' (morph 
+                segmentation), and 'BAS_MORPHCLASS' (morph classes). 'tg' and 'exttg' produce TextGrid output; 
+                for this a TextGrid input (iform 'tg') is required. With 'tg' the tier 'BAS_TRS' (phonemic 
+                transcript) is inserted to the TextGrid which runs parallel to the tier
+                specified by the parameter 'tgitem'; words are separated by an '#' symbol. 'exttg' adds
+                the tiers 'BAS_POS', 'BAS_MORPH', and 'BAS_MORPHCLASS' parallel to 'BAS_TRS'. Their content is
+                the same as for oform 'exttcf'. The 'extended' oform versions 'exttab', 'extlex', 'exttcf', and 'exttg' 
+                are only available for 
+                languages deu|eng-*|aus|nze|use; for the other languages these formats are replaced by the corresponding
+                non-extended format. While the output contains punctuation for 'exttab', 'tcf', 'exttcf', and 'exttg'
+                for the other formats it is ignored.
+
+Output: A XML response containing the elements "success", "downloadLink", "output"
+                and "warning". "success" states if the processing was successful or not, "downloadLink" specifies the
+                location where the file containing the phonemic transcription in SAM-PA (segmented in words) can be
+                found (the format of the file depends on the option selected in oform), "output" contains the output that
+                is mostly useful during debugging errors, and "warnings" contains any warnings that occured during the processing.
+                The format of the output file depends on the value of input parameter oform.
+

@@ -1,0 +1,27 @@
+Forced alignment = given speech audio and a transcript, forced alignment finds word-level timestamps of the transcribed words to the audio.
+
+There is an online tool WebMAUS: https://clarin.phonetik.uni-muenchen.de/BASWebServices/interface
+It can be operated through a web browser, but it's not much easy and convenient, it requires matching transcripts and audios names. Therefore, these scripts run WebMAUS for Czech, German and English from the command line, by using the web API. Please, use it responsibly, don't DOS it by many parallel requests.
+
+Moreover, G2P (grapheme to phoneme) conversion for Czech needed some non-trivial fixes that are resolved here. 
+
+Other languages than cs, de, en can be added easily.
+
+
+
+Usage:
+
+ ./g2p.sh transcript.txt {cs,de,en} > phonemes.par 
+
+ ./maus-general.sh audio.{ogg,mp4,...} phonemes.par {cs,de,en} > forced-alignments.auda.txt
+
+   - it uses the *py scripts for converting the format
+
+   - one of them expects there is python3 virtual environment under ../p3 , with `pip install praat-textgrids`
+
+Tip:
+
+- Inspect the output file forced-alignments.auda.txt in Audacity, by loading both audio and the label track: https://manual.audacityteam.org/man/label_tracks.html
+
+
+Author: Dominik Macháček, machacek@ufal.mff.cuni.cz
