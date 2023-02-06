@@ -15,13 +15,15 @@ Usage:
 
  ./maus-general.sh audio.{ogg,mp4,...} phonemes.par {cs,de,en} > forced-alignments.auda.txt
 
-   - it uses the *py scripts for converting the format
+   - it uses the tgrid_to_aud.py for converting the format
 
-   - one of them expects there is python3 virtual environment under ../p3 , with `pip install praat-textgrids`
+   - it expects that a python3 (virtual) environment is activated, with `pip install praat-textgrids`
 
-Tip:
+Tips:
 
-- Inspect the output file forced-alignments.auda.txt in Audacity, by loading both audio and the label track: https://manual.audacityteam.org/man/label_tracks.html
+- in case of error: inspect $tdir/out1.html for WebMAUS error message (wrong file format etc.), and see help-*
+
+- inspect the output file forced-alignments.auda.txt in Audacity, by loading both audio and the label track: https://manual.audacityteam.org/man/label_tracks.html
 
 
 Author: Dominik Macháček, machacek@ufal.mff.cuni.cz

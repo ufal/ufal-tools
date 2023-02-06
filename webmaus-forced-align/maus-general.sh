@@ -26,7 +26,6 @@ par=$2
 
 tdir=$(mktemp -d)
 
-tdir=tempdir
 mkdir -p $tdir
 
 if [[ "$par" != *.par ]]; then
@@ -45,9 +44,9 @@ LINK=$(sed 's/.*<downloadLink>//;s@</download.*@@' $out)
 outgrid=$tdir/out.TextGrid
 curl $LINK > $outgrid
 
-../p3/bin/python3 tgrid_to_aud.py $outgrid && rm -rf $tdir
-
-echo $tdir >&2
-
-
-
+if python3 tgrid_to_aud.py $outgrid ; then
+	rm -rf $tdir
+else
+	echo ERROR: There was an erorr. You can inspect the partial outputs in tempdir >&2
+	echo $tdir >&2
+fi
