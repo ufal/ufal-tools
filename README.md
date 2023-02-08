@@ -12,6 +12,8 @@ If the tool belongs to the above mentioned class, but has its own repository, it
 
 - https://github.com/ufal/qsubmit
 
+- https://github.com/ufal/marian-tensorboard
+
 - ziplines: https://www1.cuni.cz/~obo/textutils/ziplines 
 
 - Ondřej Bojar's Missing Textutils: https://www1.cuni.cz/~obo/textutils/ 
