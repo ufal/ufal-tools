@@ -28,7 +28,7 @@ if __name__ == '__main__':
     if usage == "local":
         address = local_address
     elif usage == "public_internet":
-        address == public_internet_address
+        address = public_internet_address
     else:
         print(f"Usage: {sys.argv[0]} local|local_prefix|public_internet")
         sys.exit(1)
