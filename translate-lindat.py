@@ -31,7 +31,7 @@ def process_file(in_file, out_file):
             texts.append(text[:-1])
             if line_no > 0 and line_no % 10 == 0:
                 print((texts,))
-                r = requests.post('https://lindat.mff.cuni.cz/services/transformer/api/v2/models/en-%s?tgt=%s&src=en' % (TARGET, TARGET), data={'input_text': "\n".join(texts)})
+                r = requests.post('https://lindat.mff.cuni.cz/services/translation/api/v2/models/en-%s?tgt=%s&src=en' % (TARGET, TARGET), headers = {"accept": "application/json"}, data={'input_text': "\n".join(texts)})
                 if r.status_code == 200:
                     transl = "".join([s+(" " if s[-1] != "\n" else "") for s in r.json()]) #"  ".join([sent.strip() for sent in r.json()])
                     logger.info('OK: %s\n  -> %s' % (text, transl))
