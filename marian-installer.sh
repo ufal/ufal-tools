@@ -3,22 +3,6 @@
 # Derived from eman seed for marian (http://ufal.mff.cuni.cz/eman)
 # Ondrej Bojar and Josef Jon
 # vim: tabstop=2 expandtab
-#
-# Usage:
-#   Step 1: run it with one parameter, a name for a new directory where Marian should be installed
-#      ./marian-installer.sh ondrejs-marian-installation
-#      # this will create ondrejs-marian-installation/ and within that a script called "guessmarian"
-#
-#   Step 2: use guessmarian, the wrapper which selects the appropriate compilation for the current architecture
-#      # this guessmarian wrapper is created for all useful Marian binaries, i.e:
-#      ./ondrejs-marian-installation/guessmarian -h
-#      ./ondrejs-marian-installation/guessmarian-decoder -h
-#      ./ondrejs-marian-installation/guessmarian-scorer -h
-#   Possible Step 3: If you try running this on some new architecture, guessmarian will complain that
-#      # no binaries were compiled for that architecture.
-#      # All you need to do is to run the following on the problematic architecture:
-#      cd ondrejs-marian-installation
-#      ./compile-again-for-this-architecture.sh
 
 
 marianrepo=https://github.com/marian-nmt/marian-dev.git
@@ -77,88 +61,78 @@ fi
 warn "### Compiling marian for the CPU+GPU architecture of "$(hostname)" into $TARGETDIR"
 cd "$TARGETDIR" || die "Failed to chdir to $TARGETDIR"
 
-### Default settings (good for ufal)
-GCC=/usr/
-# where do all cuda versions live?
-CUDA_HOMES=/opt/cuda
+### If you have custom CUDA installation, put the path in here (auto-detection mostly works on systems with cuda installed through package manager, as well as Metacentrum and IT4I):
+#UFAL:
+CUDA_HOME=/opt/cuda/11.7
 
+#Lingea:
+CUDA_HOME=/usr/local/cuda-11.8/
 
 ### Environment-specific steps and settings
+#Metacentrum (hostname list might not be exhaustive, please let the authors know if you end up with a node using another hostname)
 hostname=$(hostname)
-if [[ "$hostname" =~ metacentrum.cz ]] || [[ "$hostname" =~ grid.cesnet.cz ]] || [[ "$hostname" =~ cerit-sc.cz ]]
+if [[ "$hostname" =~ metacentrum.cz ]] || [[ "$hostname" =~ grid.cesnet.cz ]] || [[ "$hostname" =~ cerit-sc.cz ]] || [[ "$hostname" =~ natur.cuni.cz ]] 
 then
   # adan and doom
-  module add cuda-10.1
-  module add gcc-5.3.0
-  GCC=/software/gcc/5.3.0
-  CUDA_HOMES=/software/cuda
-  #module add cmake-3.6.1
+  module load gcc/8.3.0 cmake cuda/11.6 python/3.9.12-gcc-10.2.1-rg2lpmk
 fi
 
-#use my MKL on UFAL machines
-if [[ "$hostname" == *dll* ]] ; then
-#TODO
- if [ -d /opt/intel/mkl/ ];then
-        MKL_ROOT=/opt/intel/mkl/
-        MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
-
-  fi
-
-fi
-
-
-# use my MKL on AIC
-if [[ "$hostname" == cpu-node* ]] ||  [[ "$hostname" == gpu-node* ]]  ; then
- if [ -d /lnet/aic/personal/jon/mkl/2021.2.0 ];then
-     	MKL_ROOT=/lnet/aic/personal/jon/mkl/2021.2.0
-        MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
-
-  fi
-fi
-
-# use MKL on metacentrum
-if [ -d /mnt/storage-brno8/home/cepin/mkl/2021.2.0/ ];then
-  MKL_ROOT=/mnt/storage-brno8/home/cepin/mkl/2021.2.0/ 
-  MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT"
-fi
-
-#TODO check more possible MKL paths before downloading
-if [ -z $MKL_ROOT ];then
-	echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
-  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
-  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$DESIREDDIR"/mkl
-  install_exit_code=$?
-  if [ $install_exit_code -eq 1 ]; then
-    MKL_ROOT="$DESIREDDIR"/mkl/mkl/2021.2.0/
-    MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT "
-  else  
-    warn "MKL install failed"
-  fi
-
-
+#IT4I
+if  [[ "$hostname" =~ it4i.cz ]]
+then
+        module load CMake/3.20.1-GCCcore-10.3.0 CUDA/11.7.0
 fi
 
 ### Less environment specific steps
 
-# in ideal case, nvidia-smi exists and we want to use this version of CUDA
-CUDA_VERSION=$(nvidia-smi | grep -oP "CUDA Version: \K...." )
-USE_CUDA=yes
-if [ -e $CUDA_HOMES/$CUDA_VERSION/bin/nvcc ]
+## CUDA
+mkdir cuda_ver
+cat << END > cuda_ver/CMakeLists.txt
+cmake_minimum_required(VERSION 3.17)
+project(cudaVer)
+find_package(CUDA "9.0") 
+if(CUDA_FOUND)
+	message(STATUS "CUDA VERSION \${CUDA_VERSION}")
+	message(STATUS "CUDA_TOOLKIT_ROOT_DIR \${CUDA_TOOLKIT_ROOT_DIR}")
+endif()
+END
+cd cuda_ver
+if [ ! -z $CUDA_HOME ];
 then
-  CUDA_HOME="$CUDA_HOMES/$CUDA_VERSION/"
-elif [ -e $CUDA_HOMES/10.1 ]; then
-  # Strange situation when nvidia-smi returns e.g. version 11.2
-  CUDA_HOME="$CUDA_HOMES/10.1/"
-  CUDA_VERSION=$("$CUDA_HOME/bin/nvcc" --version | grep -oP "release \K....")
-  warn "Compiling with CUDA version $CUDA_VERSION from $CUDA_HOME"
-else 
-  if [ -z "$CUDA_VERSION" ];then
-    USE_CUDA=no
-    warn "Warning: CUDA not located, installing without GPU support!"
-  else
-    warn "CUDA seems to be installed, but install dir not found, hopefully CMake will find it"
-  fi
+	cmake -DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME . > cmake_out.log
+else
+	cmake . > cmake_out.log
 fi
+CUDA_VERSION=$(grep "CUDA VERSION" cmake_out.log | sed 's/.*CUDA VERSION //g')
+if [ ! -z $CUDA_VERSION ];
+then
+USE_CUDA=yes
+fi
+cd ..
+
+
+
+
+## MKL
+mkdir mkl_ver
+cat << END > mkl_ver/CMakeLists.txt
+cmake_minimum_required(VERSION 3.17)
+project(mklVer)
+find_package(MKL)
+message(STATUS "MKL ROOT \${MKL_ROOT}")
+END
+cd mkl_ver
+if [ ! -z $MKL_ROOT ];
+then
+  cmake -DMKL_ROOT=$MKL_ROOT . > cmake_out.log
+else
+  cmake . > cmake_out.log
+fi
+MKL_ROOT=$(grep "MKL ROOT" cmake_out.log | sed 's/.*MKL ROOT //g')
+cd ..
+
+
+
 
 
 ## Construct chipset fingerprint
@@ -176,14 +150,8 @@ if [ ! x$USE_CUDA == xyes ]; then
   cuda_flag="-DCOMPILE_CUDA=off"
   fingerprint="CPUONLY-CPU-$instr"
 else
-if [[ ! -z "$CUDA_HOME" ]]; then
   warn "Compiling Marian with this CUDA_HOME: $CUDA_HOME"
-    cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
-
-  else
-   warn "CUDA seems to be present, but can't find CUDA_HOME, hopufully cmake will find it"
-
-  fi
+  cuda_flag="-DCUDA_TOOLKIT_ROOT_DIR=$CUDA_HOME"
   fingerprint="CUDA-$CUDA_VERSION-CPU-$instr"
 fi
 warn "Compiling this version: $fingerprint"
@@ -193,9 +161,9 @@ if ! git ls-remote --heads "$marianrepo" | grep "refs/heads/$BRANCH" -q; then \
   echo "The branch '$BRANCH' does not exist at $marianrepo, assuming it is a commit"
 fi
 
-set -ex # exit after any failure and show all commands run
-
 # get cmake
+#CMAKE=/cvmfs/software.metacentrum.cz/spack1/software/cmake/linux-debian10-x86_64/3.17.3-intel-xadmgc/bin/cmake
+CMAKE=$(which cmake)
 if [ -z "$CMAKE" ]; then
   if [ ! -e cmake-3.19.6 ]; then
     wget https://cmake.org/files/v3.19/cmake-3.19.6.tar.gz
@@ -208,7 +176,7 @@ if [ -z "$CMAKE" ]; then
   else
     warn "Will use the existing ./cmake-3.19.6"
   fi
-  usecmake=$TARGETDIR/cmake-3.19.6
+  usecmake=$TARGETDIR/cmake-3.19.6/bin/cmake
 else
   usecmake=$CMAKE
 fi
@@ -224,6 +192,32 @@ else
   warn "Will use the existing ./marian/"
 fi
 
+set -ex
+
+#TODO check more possible MKL paths before downloading
+if [ -z $MKL_ROOT ];then
+   echo "### WARNING: Downloading MKL library from Intel, by using this installer you agree with the conditions of Intel's EULA here: https://software.intel.com/content/www/us/en/develop/articles/end-user-license-agreement.html"
+  if [ -f ~/intel/installercache/intel.installer.oneapi.linux.installer/intel.oneapi.lin.onemkl.package,v=2021.2.0-296/state.json ];
+  then
+	 MKL_ROOT=$(cat ~/intel/installercache/intel.installer.oneapi.linux.installer/intel.oneapi.lin.onemkl.package,v=2021.2.0-296/state.json | grep installDir | head -n1 | sed 's/.*: //g' | sed 's/"//g' | sed 's/,//g')
+	MKL_ROOT=$MKL_ROOT/mkl/2021.2.0/
+	if [ ! -e $MKL_ROOT ]; then
+	rm -rf  ~/intel/installercache/
+	MKL_ROOT=
+	fi
+  fi
+ if [ -z $MKL_ROOT ];then
+  wget https://registrationcenter-download.intel.com/akdlm/irc_nas/17757/l_onemkl_p_2021.2.0.296_offline.sh
+  bash l_onemkl_p_2021.2.0.296_offline.sh -a --action install  -s --eula accept --install-dir "$TARGETDIR"/mkl
+#  install_exit_code=$?
+ # if [ $install_exit_code -eq 1 ]; then
+    MKL_ROOT="$TARGETDIR"/mkl/mkl/2021.2.0/
+fi
+    MKL_STRING=" -DMKL_INCLUDE_DIR=$MKL_ROOT/include/ -DMKL_ROOT=$MKL_ROOT "
+  #else
+  #  warn "MKL install failed"
+  #fi
+fi
 
 if [ ! -e marian/build-$fingerprint ]; then
   warn "RUNNING BUILD in marian/build-$fingerprint"
@@ -231,18 +225,11 @@ if [ ! -e marian/build-$fingerprint ]; then
   cd marian/build-$fingerprint
 
   # build marian
-  $usecmake/bin/cmake \
+  $usecmake \
     $cuda_flag $MKL_STRING \
     -DBOOST_ROOT=$BOOST/ \
     -DBOOST_INCLUDEDIR=$BOOST/include \
     -DBOOST_LIBRARYDIR=$BOOST/lib \
-    -DCMAKE_C_COMPILER=$GCC/bin/gcc \
-    -DCMAKE_CXX_COMPILER=$GCC/bin/g++ \
-    -DCMAKE_MODULE_LINKER_FLAGS="-lutil -ldl  -lcblas -lblas" \
-    -DCMAKE_EXE_LINKER_FLAGS="-lutil -ldl -lcblas -lblas " \
-    -DCMAKE_SHARED_LINKER_FLAGS="-lutil -ldl -lcblas -lblas " \
-    -DCMAKE_C_STANDARD_LIBRARIES="-lpthread" \
-    -DCMAKE_REQUIRED_FLAGS="-lpthread" \
 	-DUSE_SENTENCEPIECE=on \
 	-DBUILD_CPU=on \
 	-DUSE_DOXYGEN=off \
@@ -283,34 +270,62 @@ else
   instr=\${instr:1:100}
     # strip the leading -
 
-# First, try to parse nvidia-smi
+### If you have custom CUDA installation, put the path in here (auto-detection mostly works on systems with cuda installed through package manager, as well as Metacentrum and IT4I):
+#UFAL:
+CUDA_HOME=/opt/cuda/11.7
 
-CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
-  if [ -e $TARGETDIR/marian/build-CUDA-\$CUDA_VERSION-CPU-\$instr/marian ]
+#Lingea:
+CUDA_HOME=/usr/local/cuda-11.8/
+
+### Environment-specific steps and settings
+#Metacentrum (hostname list might not be exhaustive, please let the authors know if you end up with a node using another hostname)
+hostname=\$(hostname)
+if [[ "\$hostname" =~ metacentrum.cz ]] || [[ "\$hostname" =~ grid.cesnet.cz ]] || [[ "\$hostname" =~ cerit-sc.cz ]] || [[ "\$hostname" =~ natur.cuni.cz ]] 
+then
+  # adan and doom
+  module load gcc/8.3.0 cmake cuda/11.6 python/3.9.12-gcc-10.2.1-rg2lpmk
+fi
+
+#IT4I
+if  [[ "\$hostname" =~ it4i.cz ]]
+then
+        module load CMake/3.20.1-GCCcore-10.3.0 CUDA/11.7.0
+fi
+
+### Less environment specific steps
+
+## CUDA
+mkdir cuda_ver
+cat << END > cuda_ver/CMakeLists.txt
+cmake_minimum_required(VERSION 3.17)
+project(cudaVer)
+find_package(CUDA "9.0") 
+if(CUDA_FOUND)
+	message(STATUS "CUDA VERSION \\\${CUDA_VERSION}")
+	message(STATUS "CUDA_TOOLKIT_ROOT_DIR \\\${CUDA_TOOLKIT_ROOT_DIR}")
+endif()
+END
+cd cuda_ver
+if [ ! -z \$CUDA_HOME ];
+then
+	cmake -DCUDA_TOOLKIT_ROOT_DIR=\$CUDA_HOME . > cmake_out.log
+else
+	cmake . > cmake_out.log
+fi
+CUDA_VERSION=\$(grep "CUDA VERSION" cmake_out.log | sed 's/.*CUDA VERSION //g')
+if [ ! -z \$CUDA_VERSION ];
+then
+USE_CUDA=yes
+fi
+cd ..
+if [ -e $TARGETDIR/marian/build-CUDA-\$CUDA_VERSION-CPU-\$instr/marian ]
   then
     need="CUDA-\$CUDA_VERSION-CPU-\$instr"
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
   else
-    if [ -e "/opt/cuda/11.1/bin/nvcc" ]; then
-      CUDNN=8.0
-      CUDA_VERSION=11.1
-    elif [ -e "/opt/cuda/11.0/bin/nvcc" ]; then
-      CUDNN=8.0
-      CUDA_VERSION=11.0
-    elif [ -e "/opt/cuda/10.2/bin/nvcc" ]; then
-      CUDNN=7.6
-      CUDA_VERSION=10.2
-    elif [ -e "/opt/cuda/10.1/bin/nvcc" ]; then
-      CUDNN=7.6
-      CUDA_VERSION=10.1
-    elif [ -e "/opt/cuda/9.2/bin/nvcc" ]; then
-      CUDNN=7.4
-      CUDA_VERSION=9.2
-    else
       echo "no suitable CUDA found, falling back to CPU-only (can't be used for training)" >&2
       CUDA_VERSION=
     fi
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/cuda/$CUDA_VERSION/lib64:/opt/cuda/$CUDA_VERSION/cudnn/$CUDNN/
     need="CUDA-$CUDA_VERSION"
     if [[ ! -z "\$CUDA_VERSION" ]]; then
       need="CUDA-\$CUDA_VERSION-CPU-\$instr"
@@ -318,7 +333,6 @@ CUDA_VERSION=\$(nvidia-smi | grep -oP "CUDA Version: \K...." )
       need=CPUONLY-CPU-\$instr
     fi
   fi
-fi
 guessed=\$( ls -d $TARGETDIR/marian/build-* \
             | grep "\$need" \
             | head -n 1 )
