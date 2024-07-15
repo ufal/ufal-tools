@@ -4,7 +4,7 @@ import simple_websocket
 app = Flask(__name__)
 
 
-@app.route('/echo', websocket=True)
+@app.route('/ws/test', websocket=True)
 def echo():
     ws = simple_websocket.Server(request.environ)
     try:
