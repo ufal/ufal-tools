@@ -22,7 +22,7 @@ def main(address):
 
 if __name__ == '__main__':
     local_address = 'ws://localhost:9999/echo'
-    public_internet_address = 'ws://quest.ms.mff.cuni.cz/namuddis/ws-test/echo'
+    public_internet_address = 'ws://quest.ms.mff.cuni.cz/ws/wstest'
 
     usage = sys.argv[1]
     if usage == "local":
