@@ -1,65 +1,95 @@
-# Websocket demo
+# Websockets on demo machines
 
-## Installation
+## Summary
+In order to run websocket app through _quest_ proxy you and UFAL IT need to do the following steps:
 
-1. Ssh to `quest.ms.mff.cuni.cz` and to `namuddis`
-2. Create Python 3 virtual environment `python3 -m venv venv` and activate it for your shell `source ./venv/bin/activate`.
-3. Install requirements `pip install -r requirements.txt`
+1) Choose a unique name of the app (we use _wsapp1_ below) and choose a virtual machine where it will run (we use _demo_
+machine).
+2) Ufal IT will update `proxy.conf` and `quest_rewrites.conf` on _quest_ machine and restart/reload apache2 on _quest_
+3) Update the `server.py` which will run on the _demo_ machine so the app is `/wsapp1/echo`.
+4) Update the `client.py` and set the correct address (`ws://quest.ms.mff.cuni.cz/demo/wsapp1/echo`) matching the _demo_
+machine name wsapp app name and echo etry point.
 
-## Testing
-Please, install requirements before testing.
+Note1: Only step 2 is done by IT@UFAL.
 
-### Local deployment and testing
-Open two terminals on `namuddis` and test that local websocket connections work fine.
+Note2: For both, the client and server you need to install dependencies:
+- Create Python 3 virtual environment `python3 -m venv venv` and activate it for your shell `source ./venv/bin/activate`.
+- Install requirements `pip install -r requirements.txt`
+
+## Guest machine setup
 
 ```
-# terminal 1 on namuddis
-$ source venv/bin/activate
-$ gunicorn -w 1 --threads 10 server:app --bind 127.0.0.1:9999
-
-... You should see  output like this after startup ...
-[2023-02-03 10:45:00 +0100] [23917] [INFO] Starting gunicorn 20.1.0
-[2023-02-03 10:45:00 +0100] [23917] [INFO] Listening at: http://127.0.0.1:9999 (23917)
-[2023-02-03 10:45:00 +0100] [23917] [INFO] Using worker: gthread
-[2023-02-03 10:45:00 +0100] [23918] [INFO] Booting worker with pid: 23918
-... no more output before starting the client in the second terminal ...
-... once you have started the client you should see similar output...
-Received: 1675418171.2838495
-Received: 1675418171.384584
-Received: 1675418171.4855952
-Received: 1675418171.5864708
-Received: 1675418171.6871643
-...
-
+# Quest machine
+#/etc/apache2/mods-enabled/proxy.conf:
+# apache2 URL and headers rewrite rules for http and port 80 of the virtual machine "demo"a available at https://quest.ms.ufal.mff.cuni.cz/demo/
+<Location /demo/>
+ProxyPass http://demo/
+ProxyPassReverse http://demo/
+ProxyPassReverseCookieDomain  demo quest.ms.mff.cuni.cz
+ProxyPassReverseCookiePath  /  /demo/
+</Location>
 ```
 
 ```
-# terminal 2 on namuddis
-# Start the server on terminal 1 first
-$ source venv/bin/activate
-$ python client.py local
-> 1675418171.2838495
-< data from server 1675418171.2838495
-> 1675418171.384584
-< data from server 1675418171.384584
-> 1675418171.4855952
-< data from server 1675418171.4855952
-> 1675418171.5864708
-< data from server 1675418171.5864708
-> 1675418171.6871643
-< data from server 1675418171.6871643
+# Quest machine
+# /etc/apache2/quest_rewrites.conf:
+
+RewriteRule ^/wsapp1$ /demo/wsapp1/ [R]
+RewriteRule ^/demo/wsapp1$ /demo/wsapp1/ [R]
+RewriteCond %{HTTP:Upgrade} ^websocket$ [NC]
+RewriteCond %{HTTP:Connection} ^upgrade$ [NC]
+RewriteRule ^/?demo/wsapp1/(.*) ws://demo/wsapp1/$1 [P,L]
+
+RewriteRule ^/demo$ /demo/ [R]
 ```
 
-### Test the server on namuddis but the client on a notebook connecting from public Internet
-Open two terminals. The terminal with server on namuddis is deployed exactly the same as for local deployment.
-The second terminal with the client should be at your local machine connecting from public internet.
-The client is trying to connect to  `ws://quest.ms.mff.cuni.cz/namuddis/ws-test/echo`
+## Demo machine setup
+```
+# setup of server.py on guest machine
+# change the server address to following
+@app.route('/wsapp1/echo', websocket=True)
+def echo():
+   ...
+```
 
-Note: in order the client to work, perform the same installation as you did on `namuddis`.
+
+### Run with superuser  role on port 80
+
 ```
-# terminal 2 on your notebook connecting from PUBLIC internet network
-# Start the server on terminal 1 first
-$ source venv/bin/activate
-$ python client.py public_internet
-... currently not working....
+## Running the server in the on demo machine from the ufal-tools/websocket-demo dir
+# without proxypass rules at apache
+#
+# the good thing is that it works 
+# the bad thing it runs on port 80 and IT REQUIRES superuser login
+# logged in as su
+gunicorn -w 1 --threads 10 server:app --bind $(ip addr show
+eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1):80
 ```
+
+### Running the user role on a custom port
+The advantage is that one can have multiple apps per machine.
+However, IT UFAL needs to use rewrite rule to quest with the port for each machine. 
+E.g. rule like this
+
+```
+# Rewrite rulle for wsapp1
+RewriteRule ^/?demo/wsapp1/(.*) ws://demo:8080/wsapp1/$1 [P,L]
+```
+Then you can run the wsapp1 from server.py without sudo on custom port `8080`:
+
+```
+gunicorn -w 1 --threads 10 server:app --bind 10.10.51.123:8080
+```
+
+## Client websocket app setup
+
+```
+# Running on client machine e.g. your notebook
+# modify the client.py public_internet_address to
+# public_internet_address = 'ws://quest.ms.mff.cuni.cz/demo/wsapp1/echo'
+# and run:
+python client.py public_internet
+```
+
+## Contact
+Jindra Vodrazka setup or Ondrej Platek for user experience
