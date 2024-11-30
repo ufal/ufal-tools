@@ -81,6 +81,8 @@ Then you can run the wsapp1 from server.py without sudo on custom port `8080`:
 gunicorn -w 1 --threads 10 server:app --bind 10.10.51.123:8080
 ```
 
+Note: More than two workers might be problematic if your app is not "thread/process" save. Empirically proven problematic when reading and writing to the same files.
+
 ## Client websocket app setup
 
 ```
@@ -91,32 +93,3 @@ gunicorn -w 1 --threads 10 server:app --bind 10.10.51.123:8080
 python client.py public_internet
 ```
 
-## Note on gunicorn
-#!/bin/bash
-# # Section in the `/etc/nginx/sites-available/default`
-# #
-#     # petbot
-#     # note also that petbot should accept websocket connection
-#     # at wsapp1/ollama locally for request addressed by client as quest.mff.cuni.cz/demo/wsapp1/ollama
-#     # which is handled by quest itself using this rewrite rule
-#     #
-#     # # Rewrite rulle for wsapp1
-#     # RewriteRule ^/?demo/wsapp1/(.*) ws://demo:8080/wsapp1/$1 [P,L]
-#     #
-#     # See https://github.com/ufal/ufal-tools/tree/master/websocket-demo#running-the-user-role-on-a-custom-port
-#     #
-#     # Conclusion the http should be served at the same port -> 8080
-#     rewrite ^/petbot/(.*)/$ /demo/petbot/$1 permanent;
-#     location /petbot {
-#         proxy_pass http://localhost:8080/;
-#     }
-#     location /petbot/ {
-#         proxy_pass http://localhost:8080/;
-#     }
-#     # end of petbot
-export FLASK_RUN_PORT=8080;
-# more than two workers might be problematic if your app is not "thread/process" save. Empiricaly proven problematic when reading and writing to the same files.
-gunicorn -w 1 --threads 10 'petbot.bin.serve:create_app()' --bind 0.0.0.0:8080
-
-## Contact
-Jindra Vodrazka setup or Ondrej Platek for user experience
